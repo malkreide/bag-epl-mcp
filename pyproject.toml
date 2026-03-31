@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bag-epl-mcp"
+version = "1.0.0"
+description = "MCP server for the Swiss BAG electronic benefits platform (ePL): SL, GGSL, MiGeL"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "swiss-open-data",
+    "bag",
+    "spezialitaetenliste",
+    "ggsl",
+    "migel",
+    "fhir",
+    "krankenversicherung",
+    "python",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Healthcare Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+dependencies = [
+    "fastmcp>=2.0.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.0.0",
+    "openpyxl>=3.1.0",
+    "lxml>=5.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "respx>=0.21.0",
+    "ruff>=0.6.0",
+]
+
+[project.scripts]
+bag-epl-mcp = "bag_epl_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/malkreide/bag-epl-mcp"
+Repository = "https://github.com/malkreide/bag-epl-mcp"
+Issues = "https://github.com/malkreide/bag-epl-mcp/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bag_epl_mcp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: marks tests that call live APIs (deselect with '-m not live')"]
