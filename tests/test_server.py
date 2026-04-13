@@ -24,14 +24,13 @@ from bag_epl_mcp.server import (
     _handle_error,
     _paginate,
     _sl_website_suche,
-    epl_ggsl_abfrage,
     epl_gesuchseingaenge,
+    epl_ggsl_abfrage,
     epl_migel_suche,
     epl_rechtskontext,
     epl_server_info,
     epl_sl_suche,
 )
-
 
 # ─────────────────────────── Hilfsfunktionen ───────────────────────────────────
 
