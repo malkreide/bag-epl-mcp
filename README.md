@@ -1,78 +1,119 @@
-# bag-epl-mcp
+> \U0001f1e8\U0001f1ed **Part of the [Swiss Public Data MCP Portfolio](https://github.com/malkreide)**
 
-[![CI](https://github.com/malkreide/bag-epl-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/malkreide/bag-epl-mcp/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/bag-epl-mcp)](https://pypi.org/project/bag-epl-mcp/)
-[![Python](https://img.shields.io/pypi/pyversions/bag-epl-mcp)](https://pypi.org/project/bag-epl-mcp/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![swiss-public-data-mcp](https://img.shields.io/badge/portfolio-swiss--public--data--mcp-blue)](https://github.com/malkreide/swiss-public-data-mcp)
+# \U0001f48a bag-epl-mcp
 
-**MCP server for the Swiss Federal Office of Public Health (BAG) electronic benefits platform (ePL).**
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)
+[![No Auth Required](https://img.shields.io/badge/auth-none%20required-brightgreen)](https://github.com/malkreide/bag-epl-mcp)
+![CI](https://github.com/malkreide/bag-epl-mcp/actions/workflows/ci.yml/badge.svg)
 
-Enables AI models to answer questions about mandatory health insurance coverage in Switzerland — in natural language, grounded in real data.
+> MCP Server for the Swiss BAG electronic benefits platform (ePL) \u2014 Spezialitaetenliste, GGSL, MiGeL
 
-> **Anchor query:** *"Is this medication covered by mandatory health insurance?"*
-> → `epl_sl_suche`: Live lookup in the Spezialitätenliste (SL)
+[\U0001f1e9\U0001f1ea Deutsche Version](README.de.md)
+
+### Demo
+
+![Demo: Claude using epl_sl_suche and epl_rechtskontext](docs/assets/demo.svg)
 
 ---
 
-## What is the ePL?
+## Overview
 
-The **elektronische Plattform Leistungen (ePL)** is the BAG's new platform for three key lists of the Swiss healthcare system:
+`bag-epl-mcp` enables AI models to answer questions about mandatory health insurance coverage in Switzerland \u2014 in natural language, grounded in real data.
 
 | List | Purpose | Legal basis |
 |------|---------|-------------|
-| **Spezialitätenliste (SL)** | Compulsory-insurance medications | KVG Art. 52 |
-| **Geburtsgebrechen-Spezialitätenliste (GGSL)** | Medications for congenital disorders (IV) | IVG Anhang |
-| **Mittel- und Gegenständeliste (MiGeL)** | Medical devices & aids | KLV Art. 20 |
+| **Spezialitaetenliste (SL)** | Compulsory-insurance medications | KVG Art. 52 |
+| **GGSL** | Medications for congenital disorders (IV) | IVG Anhang |
+| **MiGeL** | Medical devices & aids | KLV Art. 20 |
 
-## Tools
+**Anchor query:** *"Is this medication covered by mandatory health insurance?"*
+\u2192 `epl_sl_suche`: Live lookup in the Spezialitaetenliste (SL)
 
-| Tool | Description |
-|------|-------------|
-| `epl_sl_suche` | Search the Spezialitätenliste for a medication |
-| `epl_ggsl_abfrage` | Check GGSL coverage for congenital disorders |
-| `epl_migel_suche` | Search the MiGeL for medical devices |
-| `epl_gesuchseingaenge` | List pending SL admission requests (transparency) |
-| `epl_rechtskontext` | Legal context for coverage questions (WZW criteria) |
-| `epl_server_info` | Server status and API phase information |
+---
 
-## Architecture: Three-Phase Design
+## Features
 
-```
-Phase 1 (current)  → XML/XLSX downloads + SL website access
-Phase 2 (planned)  → FHIR/IDMP API (BAG, ~2025/2026)
-Phase 3 (vision)   → MiGeL + AL via ePL-FHIR (2026/2027)
-```
+- \U0001f48a **6 tools, 2 resources, 2 prompts** for Swiss health insurance data
+- \U0001f50d **`epl_sl_suche`** \u2014 search the Spezialitaetenliste for medications
+- \u2696\ufe0f **`epl_rechtskontext`** \u2014 legal context with Fedlex links
+- \U0001f513 **No API key required** \u2014 all data publicly accessible
+- \u2601\ufe0f **Dual transport** \u2014 stdio (Claude Desktop) + Streamable HTTP (cloud)
+- \U0001f4da **Prompt templates** for insurance coverage checks and school health queries
 
-The server is **already useful today** and will seamlessly upgrade when the BAG publishes its FHIR API.
+---
 
-## Portfolio Synergies
+## Prerequisites
 
-| Combination | Value | Rating |
-|-------------|-------|--------|
-| `bag-epl-mcp` + `fedlex-mcp` | Legal context loop: statute → concrete list | ⭐⭐⭐ |
-| `bag-epl-mcp` + `swiss-statistics-mcp` | Healthcare cost analysis | ⭐⭐ |
-| `bag-epl-mcp` + `global-education-mcp` | OECD special needs benchmarking | ⭐ |
+- Python 3.11+
+- [uv](https://github.com/astral-sh/uv) (recommended) or pip
 
-**The compliance loop** (strongest combination with `fedlex-mcp`):
-1. *"Must this service be covered?"* → `epl_rechtskontext` → KVG/KLV norms
-2. *"What does the law say?"* → `fedlex-mcp` → exact legal text
-3. *"Is it actually on the list?"* → `epl_sl_suche` → live SL check
+---
 
 ## Installation
 
 ```bash
-pip install bag-epl-mcp
+# Clone the repository
+git clone https://github.com/malkreide/bag-epl-mcp.git
+cd bag-epl-mcp
+
+# Install
+pip install -e .
+# or with uv:
+uv pip install -e .
 ```
 
-## Usage with Claude Desktop
+Or with `uvx` (no permanent installation):
 
-Add to `claude_desktop_config.json`:
+```bash
+uvx bag-epl-mcp
+```
+
+---
+
+## Quickstart
+
+```bash
+# stdio (for Claude Desktop)
+python -m bag_epl_mcp.server
+
+# Streamable HTTP (port 8000)
+python -m bag_epl_mcp.server --http --port 8000
+```
+
+Try it immediately in Claude Desktop:
+
+> *"Is Methylphenidate (Ritalin) covered by mandatory health insurance?"*
+> *"Which laws regulate admission to the Spezialitaetenliste?"*
+> *"Is a wheelchair covered by mandatory insurance?"*
+
+---
+
+## Configuration
+
+### Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {
   "mcpServers": {
-    "bag-epl-mcp": {
+    "bag-epl": {
+      "command": "python",
+      "args": ["-m", "bag_epl_mcp.server"]
+    }
+  }
+}
+```
+
+Or with `uvx`:
+
+```json
+{
+  "mcpServers": {
+    "bag-epl": {
       "command": "uvx",
       "args": ["bag-epl-mcp"]
     }
@@ -80,66 +121,104 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-## Usage with Streamable HTTP (Cloud/Render.com)
+### Cloud Deployment (SSE for browser access)
 
-```bash
-MCP_TRANSPORT=streamable_http MCP_PORT=8000 bag-epl-mcp
+**Render.com (recommended):**
+1. Push/fork the repository to GitHub
+2. On [render.com](https://render.com): New Web Service \u2192 connect GitHub repo
+3. Set start command: `python -m bag_epl_mcp.server --http --port 8000`
+4. In claude.ai under Settings \u2192 MCP Servers, add: `https://your-app.onrender.com/sse`
+
+---
+
+## Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `epl_sl_suche` | Search the Spezialitaetenliste for compulsory-insurance medications |
+| `epl_ggsl_abfrage` | Check GGSL coverage for congenital disorders |
+| `epl_migel_suche` | Search the MiGeL for medical devices & aids |
+| `epl_gesuchseingaenge` | List pending SL admission requests (transparency) |
+| `epl_rechtskontext` | Legal context for coverage questions (WZW criteria) |
+| `epl_server_info` | Server status and API phase information |
+
+### Example Use Cases
+
+| Query | Tool |
+|-------|------|
+| *"Is Ritalin covered by insurance?"* | `epl_sl_suche` |
+| *"Which medications for congenital disorder GG-313?"* | `epl_ggsl_abfrage` |
+| *"Is a wheelchair covered?"* | `epl_migel_suche` |
+| *"Which laws regulate the SL?"* | `epl_rechtskontext` |
+
+---
+
+## Architecture
+
+```
+Phase 1 (current)  \u2192 SL website access + structured legal info
+Phase 2 (planned)  \u2192 FHIR/IDMP API (BAG, ~2025/2026)
+Phase 3 (vision)   \u2192 MiGeL + AL via ePL-FHIR (2026/2027)
 ```
 
-## Example Queries
+The server is **already useful today** and will seamlessly upgrade when the BAG publishes its FHIR API.
 
-```
-# School health service use case:
-"Is Methylphenidate (Ritalin) covered by mandatory health insurance?"
-→ epl_sl_suche: suchbegriff="Methylphenidat"
+---
 
-# Special needs education:
-"Which medications are covered for children with congenital disorder GG-313 (diabetes)?"
-→ epl_ggsl_abfrage: geburtsgebrechen_nr="313"
+## Safety & Limits
 
-# Legal compliance:
-"Which laws regulate admission to the Spezialitätenliste?"
-→ epl_rechtskontext: frage="Welche Gesetze regeln die Aufnahme in die SL?"
+- **Read-only:** All tools perform HTTP GET requests only \u2014 no data is written, modified, or deleted.
+- **No personal data:** The server accesses public regulatory lists (SL, GGSL, MiGeL). No personally identifiable information (PII) is processed or stored.
+- **No medical advice:** This server provides informational access to regulatory data only. For medical or legal decisions, always consult the official BAG sources and qualified professionals.
+- **Rate limits:** The SL website (sl.bag.admin.ch) is a public Angular SPA; the server enforces a 30s timeout per request. Use `limit` parameters conservatively.
+- **Data freshness:** Phase 1 tools link to live BAG sources. No caching is performed by this server.
+- **Terms of service:** Data is subject to the ToS of [sl.bag.admin.ch](https://sl.bag.admin.ch), [bag.admin.ch](https://www.bag.admin.ch), and [fedlex.admin.ch](https://www.fedlex.admin.ch).
+- **No guarantees:** This is a community project, not affiliated with the BAG or any government entity. Availability depends on upstream sources.
 
-# Medical devices for inclusive schools:
-"Is a wheelchair covered by mandatory health insurance?"
-→ epl_migel_suche: suchbegriff="Rollstuhl"
-```
-
-## Context: Schulamt der Stadt Zürich
-
-This server is particularly relevant for the school system:
-
-- **School health service**: Check if a pupil's medication is covered before advising families
-- **Special needs support**: GGSL coverage for pupils with congenital disorders
-- **Inclusive education**: MiGeL coverage for assistive devices
-- **HR / Stadtentwicklung**: Benefits questions for city employees
-
-## Known Limitations
-
-- **Phase 1 limitation**: The ePL internal API is not publicly documented. The SL website (sl.bag.admin.ch) is an Angular SPA with a private backend. Direct medication search may return no results until the BAG publishes its FHIR API.
-- **Fallback**: All tools provide direct links to sl.bag.admin.ch for manual searches.
-- **MiGeL**: Not yet integrated in ePL (planned 2026/2027); MiGeL tools use category matching.
+---
 
 ## Testing
 
 ```bash
-# Unit tests (no live API calls):
-PYTHONPATH=src pytest tests/ -m "not live" -v
+# Unit tests (no API key required)
+PYTHONPATH=src pytest tests/ -m "not live"
 
-# Live tests (requires network):
-PYTHONPATH=src pytest tests/ -m "live" -v
+# Integration tests (live API calls)
+pytest tests/ -m "live"
 ```
-
-## Legal Notices
-
-Data sources:
-- [Spezialitätenliste (SL)](https://sl.bag.admin.ch) — Bundesamt für Gesundheit (BAG)
-- [KVG SR 832.10](https://www.fedlex.admin.ch/eli/cc/1995/1328_1328_1328/de)
-- [KLV SR 832.112.31](https://www.fedlex.admin.ch/eli/cc/1995/4964_4964_4964/de)
-
-This server provides informational access only. For medical or legal decisions, always consult the official BAG sources directly.
 
 ---
 
-Part of the [swiss-public-data-mcp](https://github.com/malkreide/swiss-public-data-mcp) portfolio.
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+---
+
+## License
+
+MIT License \u2014 see [LICENSE](LICENSE)
+
+---
+
+## Author
+
+Hayal Oezkan \u00b7 [malkreide](https://github.com/malkreide)
+
+---
+
+## Credits & Related Projects
+
+- **BAG Spezialitaetenliste:** [sl.bag.admin.ch](https://sl.bag.admin.ch) \u2014 Federal Office of Public Health
+- **KVG:** [SR 832.10](https://www.fedlex.admin.ch/eli/cc/1995/1328_1328_1328/de) \u2014 Health Insurance Act
+- **KLV:** [SR 832.112.31](https://www.fedlex.admin.ch/eli/cc/1995/4964_4964_4964/de) \u2014 Healthcare Benefits Ordinance
+- **Protocol:** [Model Context Protocol](https://modelcontextprotocol.io/) \u2014 Anthropic / Linux Foundation
+- **Related:** [fedlex-mcp](https://github.com/malkreide/fedlex-mcp) \u2014 Swiss federal law
+- **Related:** [swiss-cultural-heritage-mcp](https://github.com/malkreide/swiss-cultural-heritage-mcp) \u2014 Cultural heritage data
+- **Portfolio:** [Swiss Public Data MCP Portfolio](https://github.com/malkreide)

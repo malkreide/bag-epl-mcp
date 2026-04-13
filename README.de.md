@@ -1,109 +1,158 @@
-# bag-epl-mcp
+[\U0001f1ec\U0001f1e7 English Version](README.md)
 
-[![CI](https://github.com/malkreide/bag-epl-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/malkreide/bag-epl-mcp/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/bag-epl-mcp)](https://pypi.org/project/bag-epl-mcp/)
-[![swiss-public-data-mcp](https://img.shields.io/badge/portfolio-swiss--public--data--mcp-blue)](https://github.com/malkreide/swiss-public-data-mcp)
+> \U0001f1e8\U0001f1ed **Teil des [Swiss Public Data MCP Portfolios](https://github.com/malkreide)**
 
-**MCP-Server für die elektronische Plattform Leistungen (ePL) des Bundesamts für Gesundheit (BAG).**
+# \U0001f48a bag-epl-mcp
 
-Ermöglicht KI-Modellen, Fragen zur obligatorischen Krankenpflegeversicherung in natürlicher Sprache zu beantworten — verankert in echten Daten.
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
+[![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)
+[![Kein API-Schluessel](https://img.shields.io/badge/Auth-keiner%20erforderlich-brightgreen)](https://github.com/malkreide/bag-epl-mcp)
+![CI](https://github.com/malkreide/bag-epl-mcp/actions/workflows/ci.yml/badge.svg)
 
-> **Anker-Abfrage:** *«Ist dieses Medikament kassenpflichtig?»*
-> → `epl_sl_suche`: Direktabfrage in der Spezialitätenliste (SL)
+> MCP-Server fuer die elektronische Plattform Leistungen (ePL) des BAG \u2014 Spezialitaetenliste, GGSL, MiGeL
+
+### Demo
+
+![Demo: Claude nutzt epl_sl_suche und epl_rechtskontext](docs/assets/demo.svg)
 
 ---
 
-## Was ist die ePL?
+## Uebersicht
 
-Die **elektronische Plattform Leistungen (ePL)** ist die neue Plattform des BAG für drei Schlüssellisten des Schweizer Gesundheitssystems:
+`bag-epl-mcp` ermoeglicht KI-Modellen, Fragen zur obligatorischen Krankenpflegeversicherung in natuerlicher Sprache zu beantworten \u2014 verankert in echten Daten.
 
 | Liste | Zweck | Rechtsgrundlage |
 |-------|-------|-----------------|
-| **Spezialitätenliste (SL)** | Kassenpflichtige Medikamente | KVG Art. 52 |
-| **Geburtsgebrechen-Spezialitätenliste (GGSL)** | Medikamente bei Geburtsgebrechen (IV) | IVG Anhang |
-| **Mittel- und Gegenständeliste (MiGeL)** | Medizinprodukte und Hilfsmittel | KLV Art. 20 |
+| **Spezialitaetenliste (SL)** | Kassenpflichtige Medikamente | KVG Art. 52 |
+| **GGSL** | Medikamente bei Geburtsgebrechen (IV) | IVG Anhang |
+| **MiGeL** | Medizinprodukte und Hilfsmittel | KLV Art. 20 |
 
-## Tools
+**Anker-Abfrage:** *\u00abIst dieses Medikament kassenpflichtig?\u00bb*
+\u2192 `epl_sl_suche`: Direktabfrage in der Spezialitaetenliste (SL)
+
+---
+
+## Funktionen
+
+- \U0001f48a **6 Tools, 2 Resources, 2 Prompts** fuer Schweizer Gesundheitsdaten
+- \U0001f50d **`epl_sl_suche`** \u2014 Medikamentensuche in der Spezialitaetenliste
+- \u2696\ufe0f **`epl_rechtskontext`** \u2014 Rechtliche Grundlagen mit Fedlex-Links
+- \U0001f513 **Kein API-Schluessel erforderlich** \u2014 alle Daten oeffentlich zugaenglich
+- \u2601\ufe0f **Dualer Transport** \u2014 stdio (Claude Desktop) + Streamable HTTP (Cloud)
+- \U0001f4da **Prompt-Vorlagen** fuer Kassenpflicht-Checks und Schulgesundheit
+
+---
+
+## Voraussetzungen
+
+- Python 3.11+
+- [uv](https://github.com/astral-sh/uv) (empfohlen) oder pip
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/malkreide/bag-epl-mcp.git
+cd bag-epl-mcp
+pip install -e .
+```
+
+Oder mit `uvx`:
+
+```bash
+uvx bag-epl-mcp
+```
+
+---
+
+## Schnellstart
+
+```bash
+# stdio (fuer Claude Desktop)
+python -m bag_epl_mcp.server
+
+# Streamable HTTP (Port 8000)
+python -m bag_epl_mcp.server --http --port 8000
+```
+
+---
+
+## Verfuegbare Tools
 
 | Tool | Beschreibung |
 |------|-------------|
 | `epl_sl_suche` | Kassenpflichtige Medikamente in der SL suchen |
-| `epl_ggsl_abfrage` | GGSL-Deckung bei Geburtsgebrechen prüfen |
+| `epl_ggsl_abfrage` | GGSL-Deckung bei Geburtsgebrechen pruefen |
 | `epl_migel_suche` | Medizinprodukte in der MiGeL suchen |
 | `epl_gesuchseingaenge` | Transparenzliste SL-Neuaufnahmen abrufen |
 | `epl_rechtskontext` | Rechtliche Grundlagen zur Kassenpflicht (WZW) |
 | `epl_server_info` | Serverstatus und API-Phaseninfo |
 
-## Architektur: Drei-Phasen-Design
+---
+
+## Architektur
 
 ```
-Phase 1 (aktuell)  → XML/XLSX-Downloads + SL-Website-Zugriff
-Phase 2 (geplant)  → FHIR/IDMP-API (BAG, ~2025/2026)
-Phase 3 (Vision)   → MiGeL + AL via ePL-FHIR (2026/2027)
+Phase 1 (aktuell)  \u2192 SL-Website-Zugriff + strukturierte Rechtsinfo
+Phase 2 (geplant)  \u2192 FHIR/IDMP-API (BAG, ~2025/2026)
+Phase 3 (Vision)   \u2192 MiGeL + AL via ePL-FHIR (2026/2027)
 ```
-
-**Gleise bauen, bevor der Zug kommt:** Der Server ist heute nutzbar und upgradet nahtlos, sobald das BAG seine FHIR-API publiziert.
-
-## Portfolio-Synergien
-
-| Kombination | Mehrwert | Bewertung |
-|-------------|---------|-----------|
-| `bag-epl-mcp` + `fedlex-mcp` | Rechtskontext-Loop: Gesetz → konkrete Liste | ⭐⭐⭐ |
-| `bag-epl-mcp` + `swiss-statistics-mcp` | Gesundheitskosten-Analyse | ⭐⭐ |
-| `bag-epl-mcp` + `global-education-mcp` | OECD Sonderpädagogik-Benchmarking | ⭐ |
-
-**Der Compliance-Loop** (stärkste Kombination mit `fedlex-mcp`):
-1. *«Muss diese Leistung gedeckt sein?»* → `epl_rechtskontext` → KVG/KLV-Normen
-2. *«Was sagt das Gesetz genau?»* → `fedlex-mcp` → Gesetzestext
-3. *«Ist es tatsächlich auf der Liste?»* → `epl_sl_suche` → Live-SL-Prüfung
-
-## Installation
-
-```bash
-pip install bag-epl-mcp
-```
-
-## Verwendung mit Claude Desktop
-
-In `claude_desktop_config.json` eintragen:
-
-```json
-{
-  "mcpServers": {
-    "bag-epl-mcp": {
-      "command": "uvx",
-      "args": ["bag-epl-mcp"]
-    }
-  }
-}
-```
-
-## Beispielabfragen
-
-```
-# Schulgesundheitsdienst:
-«Ist Methylphenidat (Ritalin) kassenpflichtig?»
-→ epl_sl_suche: suchbegriff="Methylphenidat"
-
-# Sonderpädagogik:
-«Welche Medikamente sind bei GG-Nr. 313 (Diabetes) gedeckt?»
-→ epl_ggsl_abfrage: geburtsgebrechen_nr="313"
-
-# Rechtliche Compliance:
-«Welche Gesetze regeln die Aufnahme in die Spezialitätenliste?»
-→ epl_rechtskontext: frage="Welche Gesetze regeln die Aufnahme in die SL?"
-
-# Inklusionsschule:
-«Ist ein Rollstuhl über die Grundversicherung gedeckt?»
-→ epl_migel_suche: suchbegriff="Rollstuhl"
-```
-
-## Bekannte Einschränkungen
-
-- **Phase-1-Limitation**: Die interne ePL-API ist nicht öffentlich dokumentiert. Die SL-Website (sl.bag.admin.ch) ist eine Angular-SPA mit privatem Backend. Direkte Medikamentensuche kann leer zurückkehren, bis das BAG seine FHIR-API veröffentlicht.
-- **Fallback**: Alle Tools liefern direkte Links zu sl.bag.admin.ch für manuelle Suchen.
-- **MiGeL**: Noch nicht in ePL integriert (geplant 2026/2027).
 
 ---
 
-Teil des [swiss-public-data-mcp](https://github.com/malkreide/swiss-public-data-mcp)-Portfolios.
+## Sicherheit & Grenzen
+
+- **Nur lesend:** Alle Tools fuehren ausschliesslich HTTP-GET-Anfragen aus \u2014 keine Daten werden geschrieben, geaendert oder geloescht.
+- **Keine Personendaten:** Der Server greift auf oeffentliche Regulierungslisten (SL, GGSL, MiGeL) zu. Es werden keine personenbezogenen Daten (PII) verarbeitet oder gespeichert.
+- **Keine medizinische Beratung:** Dieser Server bietet rein informativen Zugang zu regulatorischen Daten. Fuer medizinische oder rechtliche Entscheidungen konsultieren Sie die offiziellen BAG-Quellen und qualifizierte Fachpersonen.
+- **Rate Limits:** Die SL-Website (sl.bag.admin.ch) ist eine oeffentliche Angular-SPA; der Server erzwingt ein 30s-Timeout pro Anfrage. Verwenden Sie `limit`-Parameter konservativ.
+- **Datenfische:** Phase-1-Tools verlinken auf Live-BAG-Quellen. Kein Caching durch diesen Server.
+- **Nutzungsbedingungen:** Daten unterliegen den Nutzungsbedingungen von [sl.bag.admin.ch](https://sl.bag.admin.ch), [bag.admin.ch](https://www.bag.admin.ch) und [fedlex.admin.ch](https://www.fedlex.admin.ch).
+- **Keine Garantie:** Community-Projekt, nicht affiliiert mit dem BAG oder einer Behoerde. Verfuegbarkeit haengt von den Upstream-Quellen ab.
+
+---
+
+## Tests
+
+```bash
+PYTHONPATH=src pytest tests/ -m "not live"
+```
+
+---
+
+## Changelog
+
+Siehe [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+## Mitwirken
+
+Siehe [CONTRIBUTING.md](CONTRIBUTING.md)
+
+---
+
+## Lizenz
+
+MIT-Lizenz \u2014 siehe [LICENSE](LICENSE)
+
+---
+
+## Autor
+
+Hayal Oezkan \u00b7 [malkreide](https://github.com/malkreide)
+
+---
+
+## Credits & Verwandte Projekte
+
+- **BAG Spezialitaetenliste:** [sl.bag.admin.ch](https://sl.bag.admin.ch) \u2014 Bundesamt fuer Gesundheit
+- **KVG:** [SR 832.10](https://www.fedlex.admin.ch/eli/cc/1995/1328_1328_1328/de) \u2014 Krankenversicherungsgesetz
+- **KLV:** [SR 832.112.31](https://www.fedlex.admin.ch/eli/cc/1995/4964_4964_4964/de) \u2014 Krankenpflege-Leistungsverordnung
+- **Protokoll:** [Model Context Protocol](https://modelcontextprotocol.io/) \u2014 Anthropic / Linux Foundation
+- **Verwandt:** [fedlex-mcp](https://github.com/malkreide/fedlex-mcp) \u2014 Schweizer Bundesrecht
+- **Verwandt:** [swiss-cultural-heritage-mcp](https://github.com/malkreide/swiss-cultural-heritage-mcp) \u2014 Kulturerbe-Daten
+- **Portfolio:** [Swiss Public Data MCP Portfolio](https://github.com/malkreide)
