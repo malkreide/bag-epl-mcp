@@ -11,7 +11,6 @@ import json
 import httpx
 import pytest
 import respx
-
 from bag_epl_mcp.server import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
