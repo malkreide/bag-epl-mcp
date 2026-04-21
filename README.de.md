@@ -31,6 +31,7 @@
 
 **Anker-Abfrage:** *\u00abIst dieses Medikament kassenpflichtig?\u00bb*
 \u2192 `epl_sl_suche`: Direktabfrage in der Spezialitaetenliste (SL)
+→ [Weitere Anwendungsbeispiele nach Zielgruppe →](EXAMPLES.md)
 
 ---
 

@@ -31,6 +31,7 @@
 
 **Anchor query:** *"Is this medication covered by mandatory health insurance?"*
 \u2192 `epl_sl_suche`: Live lookup in the Spezialitaetenliste (SL)
+→ [More use cases by audience →](EXAMPLES.md)
 
 ---
 
