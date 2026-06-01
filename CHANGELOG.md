@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hashes of tool definitions (SEC-022).
 - Tests split into `tests/test_unit.py` (mocked) and `tests/test_live.py`
   (opt-in, one per tool) with a shared `conftest.py` (OPS-001).
+- `ctx: Context` injection in all tools + per-tool-call bound structured logging
+  context (`tool`, `correlation_id`, `request_id`/`client_id`) — SDK-003 / OBS-003.
+- OpenTelemetry now configures a real `TracerProvider` + OTLP exporter when
+  enabled (`[otel]` extra, `MCP_OTEL_ENABLED`) — OBS-006.
 
 ### Changed
 - Console entrypoint is now `bag_epl_mcp.server:main` (transport-aware).
@@ -59,8 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Addresses audit findings SCALE-001, ARCH-009, SDK-004, SEC-004/005/021,
   SEC-016, SEC-019, SEC-009, OBS-001/002 (Phase 1); SEC-007, SCALE-004,
   SCALE-006, SDK-001, OBS-003 (Phase 2); and SEC-018, SEC-022, ARCH-002,
-  ARCH-012, SDK-002, ARCH-003, CH-004, OBS-006, OPS-001/002/003 (Phase 3).
-  See `docs/audit/2026-06-01/`.
+  ARCH-012, SDK-002, ARCH-003, CH-004, OBS-006, OPS-001/002/003 (Phase 3);
+  and SDK-003, OBS-003 (post-re-audit follow-up). See `docs/audit/2026-06-01/`
+  and `docs/audit/2026-06-01-reaudit/`.
 
 ## [0.1.0] - 2026-04-13
 
