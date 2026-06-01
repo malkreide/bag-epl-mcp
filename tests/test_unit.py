@@ -369,3 +369,35 @@ class TestHttpApp:
         )
         assert resp.headers.get("access-control-allow-origin") == "https://claude.ai"
         assert "mcp-session-id" in resp.headers.get("access-control-allow-headers", "").lower()
+
+
+# ─────────────────────────── Observability (SDK-003 / OBS-003) ─────────────────
+
+class TestObservability:
+    """Per-Call-Logging-Kontext + Context-Injection."""
+
+    def test_bind_call_context_setzt_felder(self):
+        import structlog
+
+        from bag_epl_mcp.server import _bind_call_context
+        _bind_call_context(None, "epl_sl_suche")
+        ctxvars = structlog.contextvars.get_contextvars()
+        assert ctxvars["tool"] == "epl_sl_suche"
+        assert "correlation_id" in ctxvars
+        structlog.contextvars.clear_contextvars()
+
+    @pytest.mark.asyncio
+    async def test_tools_akzeptieren_ctx_injection(self):
+        # FastMCP injiziert Context; defensiver Zugriff -> kein Crash.
+        res = await mcp.call_tool("epl_server_info", {})
+        text = res[0][0].text if isinstance(res, tuple) else res[0].text
+        assert "BAG ePL MCP Server" in text
+
+    def test_alle_tools_haben_ctx_param(self):
+        import inspect
+
+        from bag_epl_mcp import server as srv
+        for name in ("epl_sl_suche", "epl_ggsl_abfrage", "epl_migel_suche",
+                     "epl_gesuchseingaenge", "epl_rechtskontext", "epl_server_info"):
+            fn = getattr(srv, name).fn if hasattr(getattr(srv, name), "fn") else getattr(srv, name)
+            assert "ctx" in inspect.signature(fn).parameters, f"{name}: kein ctx-Parameter"

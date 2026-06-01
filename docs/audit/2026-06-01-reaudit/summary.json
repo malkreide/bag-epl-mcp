@@ -33,21 +33,22 @@
     "checks_total": 68,
     "not_applicable": 24,
     "applicable": 44,
-    "pass": 34,
-    "partial": 10,
+    "pass": 36,
+    "partial": 8,
     "fail": 0,
-    "findings_total": 10
+    "findings_total": 8
   },
+  "follow_up_2026_06_01": "Post-re-audit remediation closed SDK-003 and OBS-003 (ctx injection + per-call bound structured logging) and fully wired OBS-006 (TracerProvider + OTLP, opt-in). pass 34->36, partial 10->8.",
   "delta_vs_baseline": {
-    "pass": "+23 (11 -> 34)",
-    "partial": "-16 (26 -> 10)",
+    "pass": "+25 (11 -> 36)",
+    "partial": "-18 (26 -> 8)",
     "fail": "-7 (7 -> 0)",
-    "resolved": ["ARCH-002","ARCH-003","ARCH-004","ARCH-009","ARCH-012","SDK-001","SDK-004","SEC-004","SEC-007","SEC-016","SEC-018","SEC-019","SEC-021","SEC-022","SCALE-001","SCALE-004","SCALE-006","OBS-001","OBS-002","CH-004","OPS-001","OPS-002","OPS-003"]
+    "resolved": ["ARCH-002","ARCH-003","ARCH-004","ARCH-009","ARCH-012","SDK-001","SDK-003","SDK-004","SEC-004","SEC-007","SEC-016","SEC-018","SEC-019","SEC-021","SEC-022","SCALE-001","SCALE-004","SCALE-006","OBS-001","OBS-002","OBS-003","CH-004","OPS-001","OPS-002","OPS-003"]
   },
   "findings_by_severity": {
     "critical": 1,
     "high": 3,
-    "medium": 6,
+    "medium": 4,
     "low": 0
   },
   "production_ready": true,
@@ -58,11 +59,9 @@
     {"id": "SCALE-002", "severity": "high", "status": "partial", "disposition": "deferred-multi-instance", "note": "Single-instance Phase-1 deployment documented; sticky sessions / shared session store only needed when horizontally scaled."},
     {"id": "SCALE-003", "severity": "high", "status": "partial", "disposition": "deferred-multi-instance", "note": "Edge-LB Mcp-Session-Id routing only relevant for >1 replica; single-instance constraint documented."},
     {"id": "SDK-002", "severity": "medium", "status": "partial", "disposition": "by-design", "note": "JSON output now uses a consistent envelope (source/provenance/match_type/count/results), but tool return annotation stays `str` to preserve the curated Markdown UX."},
-    {"id": "SDK-003", "severity": "medium", "status": "partial", "disposition": "open", "note": "No ctx: Context injection / progress reporting; tools are short-lived. Structured logging is module-level rather than per-call ctx logging."},
     {"id": "SEC-014", "severity": "medium", "status": "partial", "disposition": "accepted-risk", "note": "No MCP gateway tool allow-list; documented in docs/SECURITY.md (single public read-only server, no enterprise context)."},
     {"id": "SEC-015", "severity": "medium", "status": "partial", "disposition": "accepted-risk", "note": "No pre-flight tool-poisoning detection; static own tools, documented decision."},
-    {"id": "OBS-003", "severity": "medium", "status": "partial", "disposition": "open", "note": "Structured JSON logging to stderr with >=4 RFC-5424 levels in place; per-tool-call bound context (session_id/correlation_id) not yet added (needs ctx injection, see SDK-003)."},
-    {"id": "OBS-006", "severity": "medium", "status": "partial", "disposition": "opt-in", "note": "OpenTelemetry auto-instrumentation available via [otel] extra + MCP_OTEL_ENABLED; not enabled/configured by default (no TracerProvider in code)."}
+    {"id": "OBS-006", "severity": "medium", "status": "partial", "disposition": "opt-in", "note": "OpenTelemetry fully wired (TracerProvider + OTLP exporter + Starlette/httpx auto-instrumentation) but opt-in via [otel] extra + MCP_OTEL_ENABLED; off by default and stdio tool calls produce no spans."}
   ],
   "release_proposal": {
     "current_version": "0.1.0",

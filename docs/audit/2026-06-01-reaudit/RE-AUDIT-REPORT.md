@@ -2,12 +2,14 @@
 
 > Re-audit with the [mcp-audit-skill](https://github.com/malkreide/mcp-audit-skill) (v1.0.0, 68-check catalog) after Phase 1–3 remediation (PRs #2, #3, #4).
 > Baseline: [`../2026-06-01/AUDIT-REPORT.md`](../2026-06-01/AUDIT-REPORT.md). All numbers derive from [`summary.json`](./summary.json).
+>
+> **Follow-up (same day):** a post-re-audit remediation closed **SDK-003** and **OBS-003** and fully wired **OBS-006** — see §9. The headline figures below reflect that follow-up: **36 pass / 8 partial / 0 fail**.
 
 ---
 
 ## 1. Executive Summary
 
-After three remediation phases, the server moved from **11 pass / 26 partial / 7 fail** to **34 pass / 10 partial / 0 fail** across the 44 applicable checks. **All 7 failed checks and 16 partials were resolved**, including the advertised-but-unimplemented cloud transport (the baseline's headline defect) and 3 of the 4 critical items.
+After three remediation phases plus a same-day follow-up, the server moved from **11 pass / 26 partial / 7 fail** to **36 pass / 8 partial / 0 fail** across the 44 applicable checks. **All 7 failed checks and 18 partials were resolved**, including the advertised-but-unimplemented cloud transport (the baseline's headline defect) and 3 of the 4 critical items.
 
 **Production-readiness: `true`** for the documented **Phase-1, single-instance** deployment. There are **no failed checks** and no unaddressed criticals. The single remaining critical (SEC-009) is a **documented accepted-risk** (no authentication, public read-only data). The other 9 partials are either documented accepted-risk or deferred to Phase 2 / multi-instance scaling — none block a Phase-1 release.
 
@@ -15,18 +17,18 @@ After three remediation phases, the server moved from **11 pass / 26 partial / 7
 
 ## 2. Score Delta vs. Baseline
 
-| Status | Baseline (2026-06-01) | Re-audit | Δ |
+| Status | Baseline (2026-06-01) | Re-audit (incl. follow-up) | Δ |
 |--------|:---:|:---:|:---:|
-| Pass | 11 | **34** | **+23** |
-| Partial | 26 | **10** | **−16** |
+| Pass | 11 | **36** | **+25** |
+| Partial | 26 | **8** | **−18** |
 | Fail | 7 | **0** | **−7** |
-| Findings (partial+fail) | 33 | **10** | **−23** |
+| Findings (partial+fail) | 33 | **8** | **−25** |
 
 | Findings by severity | Baseline | Re-audit |
 |---|:---:|:---:|
 | Critical | 4 | **1** (accepted-risk) |
 | High | 16 | **3** (deferred) |
-| Medium | 13 | **6** |
+| Medium | 13 | **4** |
 | Low | 0 | 0 |
 
 Profile unchanged: dual transport · no auth · Public Open Data · read-only · Render + local-stdio.
@@ -63,7 +65,7 @@ Profile unchanged: dual transport · no auth · Public Open Data · read-only ·
 
 ---
 
-## 4. Remaining Findings (10) — none blocking Phase 1
+## 4. Remaining Findings (8) — none blocking Phase 1
 
 | ID | Sev | Status | Disposition | Note |
 |----|----|--------|-------------|------|
@@ -72,11 +74,11 @@ Profile unchanged: dual transport · no auth · Public Open Data · read-only ·
 | SCALE-002 | high | partial | **deferred (multi-instance)** | Sticky sessions / shared store only needed when scaled; single-instance documented. |
 | SCALE-003 | high | partial | **deferred (multi-instance)** | Edge-LB session routing only for >1 replica. |
 | SDK-002 | medium | partial | **by-design** | Consistent JSON envelope added; return annotation kept `str` to preserve Markdown UX. |
-| SDK-003 | medium | partial | open | No `ctx: Context` injection / progress reporting (tools are short-lived). |
 | SEC-014 | medium | partial | accepted-risk | No gateway allow-list; documented (single public read-only server). |
 | SEC-015 | medium | partial | accepted-risk | No pre-flight tool-poisoning detection; static own tools. |
-| OBS-003 | medium | partial | open | Structured logging present; per-call `session_id`/`correlation_id` binding pending (needs SDK-003). |
-| OBS-006 | medium | partial | opt-in | OTel available via `[otel]` extra; not configured/enabled by default. |
+| OBS-006 | medium | partial | opt-in | OTel fully wired (TracerProvider + OTLP + auto-instrumentation) but off by default; see §9. |
+
+> **SDK-003** and **OBS-003** were closed in a same-day follow-up (§9).
 
 **Recommended next steps (optional, non-blocking):** implement DNS-pinning (SEC-005) and `ctx`-based per-call logging (SDK-003 + OBS-003) in a small follow-up; address SCALE-002/003 only when moving to multi-instance; configure OTel at deploy time if tracing is desired.
 
@@ -113,6 +115,18 @@ All OAuth/auth checks (`auth_model == none`), PII/DSG/residency/SIEM/DLP/breach 
 | Verification | code review + automated grep + `pytest -m "not live"` (49 pass) + HTTP smoke test |
 | Production-ready | **true** (Phase-1 single-instance) |
 | Next re-audit | on auth/write/transport change, on move to multi-instance, or before Phase 2 |
+
+## 9. Follow-up Remediation (post-re-audit, same day)
+
+After the re-audit, the cleanly-fixable open items were addressed in a follow-up PR (the architectural / accepted-risk / multi-instance items were intentionally left, see their dispositions in §4):
+
+| ID | Sev | Before → After | Change |
+|----|----|:---:|--------|
+| SDK-003 | medium | partial → **pass** | `ctx: Context` injected into all 6 tools; per-call context bound to the structured logger. |
+| OBS-003 | medium | partial → **pass** | Per-tool-call bound logging context (`tool`, `correlation_id`, `request_id`/`client_id` when a session is active). |
+| OBS-006 | medium | partial → **partial (wired)** | `_init_otel` now configures a real `TracerProvider` + OTLP exporter (+ Starlette/httpx auto-instrumentation). Still opt-in via `[otel]` + `MCP_OTEL_ENABLED`. |
+
+**Updated totals: 36 pass / 8 partial / 0 fail.** Remaining 8 partials: SEC-009 (critical, accepted-risk), SEC-005 / SCALE-002 / SCALE-003 (high, deferred — DNS-pinning + multi-instance), SDK-002 (by-design), SEC-014 / SEC-015 (accepted-risk), OBS-006 (opt-in). None block a Phase-1 release.
 
 ## 8. Sign-Off
 

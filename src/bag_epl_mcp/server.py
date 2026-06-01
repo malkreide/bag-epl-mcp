@@ -16,15 +16,16 @@ import ipaddress
 import json
 import socket
 import sys
+import uuid
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from enum import StrEnum
 from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
 import structlog
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
@@ -44,6 +45,24 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 log = structlog.get_logger("bag_epl_mcp")
+
+
+def _bind_call_context(ctx: Context | None, tool: str) -> None:
+    """
+    OBS-003/SDK-003: bindet pro Tool-Call strukturierten Kontext (Tool-Name,
+    Correlation-ID und — falls eine MCP-Session aktiv ist — Request-/Client-ID)
+    an den Logger. Alle nachfolgenden ``log.*``-Aufrufe tragen diesen Kontext.
+    """
+    structlog.contextvars.clear_contextvars()
+    fields: dict[str, str] = {"tool": tool, "correlation_id": uuid.uuid4().hex}
+    if ctx is not None:
+        # Zugriff nur innerhalb eines echten Requests gueltig -> defensiv.
+        with suppress(Exception):
+            fields["request_id"] = str(ctx.request_id)
+        with suppress(Exception):
+            fields["client_id"] = str(ctx.client_id)
+    structlog.contextvars.bind_contextvars(**fields)
+    log.info("tool_call", tool=tool)
 
 
 # ─────────────────────────── Settings (ARCH-004) ───────────────────────────────
@@ -346,7 +365,7 @@ class RechtskontextInput(BaseModel):
 # ─────────────────────────── Tools ─────────────────────────────────────────────
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True))
-async def epl_sl_suche(eingabe: SLSucheInput) -> str:
+async def epl_sl_suche(eingabe: SLSucheInput, ctx: Context | None = None) -> str:
     """
     Suche in der Spezialitaetenliste (SL) nach kassenpflichtigen Medikamenten.
 
@@ -358,6 +377,7 @@ async def epl_sl_suche(eingabe: SLSucheInput) -> str:
     Direktlink plus Rechtsgrundlage. Fuer Geburtsgebrechen siehe
     epl_ggsl_abfrage, fuer Hilfsmittel epl_migel_suche.</use_case>
     """
+    _bind_call_context(ctx, "epl_sl_suche")
     try:
         ergebnis = await _sl_website_suche(eingabe.suchbegriff, eingabe.limit)
         results = ergebnis.get("results", [])
@@ -404,7 +424,7 @@ async def epl_sl_suche(eingabe: SLSucheInput) -> str:
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput) -> str:
+async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput, ctx: Context | None = None) -> str:
     """
     GGSL-Deckung bei Geburtsgebrechen pruefen.
 
@@ -417,6 +437,7 @@ async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput) -> str:
     offizielle BAG-Quelle. Im Gegensatz zu epl_sl_suche geht es hier um
     IV- statt OKP-Leistungen.</use_case>
     """
+    _bind_call_context(ctx, "epl_ggsl_abfrage")
     try:
         gg_nr = eingabe.geburtsgebrechen_nr
 
@@ -455,7 +476,7 @@ async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput) -> str:
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-async def epl_migel_suche(eingabe: MiGeLSucheInput) -> str:
+async def epl_migel_suche(eingabe: MiGeLSucheInput, ctx: Context | None = None) -> str:
     """
     Suche in der Mittel- und Gegenstaendeliste (MiGeL) nach Medizinprodukten.
 
@@ -467,6 +488,7 @@ async def epl_migel_suche(eingabe: MiGeLSucheInput) -> str:
     offizielle MiGeL-Quelle. Fuer Medikamente stattdessen epl_sl_suche.
     </use_case>
     """
+    _bind_call_context(ctx, "epl_migel_suche")
     try:
         info = {
             "suchbegriff": eingabe.suchbegriff,
@@ -505,7 +527,7 @@ async def epl_migel_suche(eingabe: MiGeLSucheInput) -> str:
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-async def epl_gesuchseingaenge() -> str:
+async def epl_gesuchseingaenge(ctx: Context | None = None) -> str:
     """
     Aktuelle Gesuchseingaenge fuer die Spezialitaetenliste abrufen.
 
@@ -516,6 +538,7 @@ async def epl_gesuchseingaenge() -> str:
     SL beantragt?» (Transparenz/Monitoring). Verweist auf die offizielle
     BAG-Transparenzliste.</use_case>
     """
+    _bind_call_context(ctx, "epl_gesuchseingaenge")
     try:
         info = {
             "beschreibung": (
@@ -546,7 +569,7 @@ async def epl_gesuchseingaenge() -> str:
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-async def epl_rechtskontext(eingabe: RechtskontextInput) -> str:
+async def epl_rechtskontext(eingabe: RechtskontextInput, ctx: Context | None = None) -> str:
     """
     Rechtlichen Kontext zur Kassenpflicht liefern.
 
@@ -558,6 +581,7 @@ async def epl_rechtskontext(eingabe: RechtskontextInput) -> str:
     Zweckmaessigkeit, Wirtschaftlichkeit) mit Fedlex-Verweisen. Ergaenzt die
     Such-Tools um den juristischen Kontext.</use_case>
     """
+    _bind_call_context(ctx, "epl_rechtskontext")
     try:
         rechtsrahmen = {
             "frage": eingabe.frage,
@@ -628,7 +652,7 @@ async def epl_rechtskontext(eingabe: RechtskontextInput) -> str:
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-async def epl_server_info() -> str:
+async def epl_server_info(ctx: Context | None = None) -> str:
     """
     Serverstatus und API-Phaseninformation anzeigen.
 
@@ -639,6 +663,7 @@ async def epl_server_info() -> str:
     Phase?\u00bb. Nuetzlich zum Discovery der verfuegbaren Tools und des
     Roadmap-Stands.</use_case>
     """
+    _bind_call_context(ctx, "epl_server_info")
     info = {
         "server": "bag-epl-mcp",
         "version": "0.1.0",
@@ -786,11 +811,20 @@ def _init_otel(app) -> None:
     Methode/Status/URL.
     """
     try:
+        from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
         from opentelemetry.instrumentation.starlette import StarletteInstrumentor
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
     except ImportError:
         log.warning("otel_unavailable", hint="install the '[otel]' extra")
         return
+    # TracerProvider + OTLP-Exporter; Endpoint via OTEL_EXPORTER_OTLP_ENDPOINT.
+    provider = TracerProvider(resource=Resource.create({"service.name": "bag-epl-mcp"}))
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    trace.set_tracer_provider(provider)
     StarletteInstrumentor().instrument_app(app)
     HTTPXClientInstrumentor().instrument()
     log.info("otel_enabled")
