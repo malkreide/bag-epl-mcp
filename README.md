@@ -77,12 +77,18 @@ uvx bag-epl-mcp
 ## Quickstart
 
 ```bash
-# stdio (for Claude Desktop)
+# stdio (for Claude Desktop) — default, opens no network ports
 python -m bag_epl_mcp.server
 
-# Streamable HTTP (port 8000)
-python -m bag_epl_mcp.server --http --port 8000
+# Streamable HTTP (cloud) — transport selected via env var
+MCP_TRANSPORT=streamable-http MCP_HOST=0.0.0.0 MCP_PORT=8000 \
+  pip install -e ".[http]" && python -m bag_epl_mcp.server
 ```
+
+> **Transport & host are configured exclusively via environment variables**
+> (`MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT`). The default is `stdio` bound to
+> nothing; `MCP_HOST` defaults to `127.0.0.1` and should only be set to
+> `0.0.0.0` inside a container/cloud environment.
 
 Try it immediately in Claude Desktop:
 
@@ -122,13 +128,24 @@ Or with `uvx`:
 }
 ```
 
-### Cloud Deployment (SSE for browser access)
+### Cloud Deployment (Streamable HTTP for browser access)
 
 **Render.com (recommended):**
 1. Push/fork the repository to GitHub
 2. On [render.com](https://render.com): New Web Service \u2192 connect GitHub repo
-3. Set start command: `python -m bag_epl_mcp.server --http --port 8000`
-4. In claude.ai under Settings \u2192 MCP Servers, add: `https://your-app.onrender.com/sse`
+3. Build command: `pip install -e ".[http]"`
+4. Set the following environment variables:
+   - `MCP_TRANSPORT=streamable-http`
+   - `MCP_HOST=0.0.0.0` (required so the container accepts external traffic)
+   - `MCP_PORT=8000` (or Render's `$PORT`)
+   - *(optional)* `MCP_CORS_ORIGINS='["https://claude.ai"]'` to extend the
+     browser CORS allow-list
+5. Start command: `python -m bag_epl_mcp.server`
+6. In claude.ai under Settings \u2192 MCP Servers, add: `https://your-app.onrender.com/mcp`
+
+> **Security note:** the server exposes only public, read-only data and uses no
+> authentication. See [`docs/SECURITY.md`](docs/SECURITY.md) for the threat
+> model (egress allow-list, host binding, Lethal-Trifecta assessment).
 
 ---
 

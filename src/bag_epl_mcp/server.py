@@ -12,15 +12,43 @@ Kein API-Schluessel erforderlich. Alle Daten oeffentlich zugaenglich.
 
 from __future__ import annotations
 
+import ipaddress
 import json
+import socket
 from enum import StrEnum
+from urllib.parse import urlsplit
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
+from mcp.types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# ─────────────────────────── Settings (ARCH-004) ───────────────────────────────
+class ServerSettings(BaseSettings):
+    """
+    Laufzeit-Konfiguration via Umgebungsvariablen (Prefix ``MCP_``).
+
+    Transport- und Host-Wahl erfolgt ausschliesslich ueber Env-Vars, damit die
+    Server-Logik transport-agnostisch bleibt (keine globalen Schalter im Code).
+    """
+    model_config = SettingsConfigDict(env_prefix="MCP_", extra="ignore")
+
+    # "stdio" (Default, lokal/Claude Desktop) | "streamable-http" (Cloud)
+    transport: str = "stdio"
+    # SEC-016: Default 127.0.0.1 — 0.0.0.0 nur explizit im Container setzen.
+    host: str = "127.0.0.1"
+    port: int = 8000
+    # SDK-004: explizite Origin-Allow-List statt Wildcard.
+    cors_origins: list[str] = ["https://claude.ai"]
+
+
+settings = ServerSettings()
 
 # ─────────────────────────── Server ────────────────────────────────────────────
-mcp = FastMCP("bag_epl_mcp")
+mcp = FastMCP("bag_epl_mcp", host=settings.host, port=settings.port)
 
 # ─────────────────────────── Konstanten ────────────────────────────────────────
 SL_BASE_URL       = "https://sl.bag.admin.ch"
@@ -35,6 +63,49 @@ MAX_LIMIT         = 100
 # Phase 2: FHIR-API-Endpunkt (wird aktiviert, sobald BAG publiziert)
 FHIR_BASE_URL = "https://epl.bag.admin.ch/fhir"  # Platzhalter
 
+# SEC-004 / SEC-021: Egress-Allow-List auf Code-Ebene (immutable).
+# Jeder ausgehende Request muss gegen diese Liste vertrauenswuerdiger
+# BAG-/Fedlex-Hosts validiert werden. Netzwerk-Layer-Egress (NetworkPolicy)
+# ergaenzt dies im Deployment.
+ALLOWED_HOSTS: frozenset[str] = frozenset({
+    "sl.bag.admin.ch",
+    "www.bag.admin.ch",
+    "www.fedlex.admin.ch",
+})
+
+
+# ─────────────────────────── Egress-Guard (SEC-004/005/021) ─────────────────────
+
+def _assert_safe_url(url: str) -> None:
+    """
+    Validiert eine Ziel-URL vor jedem ausgehenden Request.
+
+    Schutz gegen SSRF (SEC-004), DNS-Rebinding-Restrisiko (SEC-005) und
+    erzwingt die Egress-Allow-List (SEC-021):
+
+    * Schema muss ``https`` sein.
+    * Host muss in :data:`ALLOWED_HOSTS` stehen (Default-Deny).
+    * Aufgeloeste IP-Adressen duerfen nicht privat/loopback/link-local sein
+      (blockt u.a. 169.254.169.254, ::1, fe80::/10).
+    """
+    parts = urlsplit(url)
+    if parts.scheme != "https":
+        raise ToolError("Ausgehende Requests sind nur ueber HTTPS erlaubt.")
+
+    host = parts.hostname or ""
+    if host not in ALLOWED_HOSTS:
+        raise ToolError("Ziel-Host ist nicht in der erlaubten Egress-Liste.")
+
+    try:
+        infos = socket.getaddrinfo(host, parts.port or 443, proto=socket.IPPROTO_TCP)
+    except OSError as exc:
+        raise ToolError("Host-Aufloesung fehlgeschlagen.") from exc
+
+    for *_, sockaddr in infos:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise ToolError("Aufgeloeste IP-Adresse ist nicht erlaubt (SSRF-Schutz).")
+
 # ─────────────────────────── Enum ──────────────────────────────────────────────
 class ResponseFormat(StrEnum):
     """Ausgabeformat fuer Tool-Antworten."""
@@ -45,7 +116,8 @@ class ResponseFormat(StrEnum):
 # ─────────────────────────── Hilfsfunktionen ───────────────────────────────────
 
 async def _http_get(url: str, params: dict | None = None) -> httpx.Response:
-    """Async HTTP GET mit Timeout."""
+    """Async HTTP GET mit Timeout. Validiert die Ziel-URL gegen die Egress-Allow-List."""
+    _assert_safe_url(url)
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
         return await client.get(url, params=params)
 
@@ -67,7 +139,9 @@ def _handle_error(error: Exception, context: str = "") -> str:
         return f"{prefix}Zeitueberschreitung — der Server antwortet nicht innerhalb von {HTTP_TIMEOUT}s."
     if isinstance(error, httpx.ConnectError):
         return f"{prefix}Verbindung fehlgeschlagen — Server nicht erreichbar."
-    return f"{prefix}{type(error).__name__}: {error}"
+    # OBS-002: keine internen Details (rohe Exception-Message / Stacktrace / Pfade)
+    # an den LLM zurueckgeben — nur der Exception-Typ als grobe Kategorie.
+    return f"{prefix}Unerwarteter Fehler ({type(error).__name__})."
 
 
 def _paginate(total: int, limit: int, offset: int) -> dict:
@@ -181,7 +255,7 @@ class RechtskontextInput(BaseModel):
 
 # ─────────────────────────── Tools ─────────────────────────────────────────────
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True))
 async def epl_sl_suche(eingabe: SLSucheInput) -> str:
     """
     Suche in der Spezialitaetenliste (SL) nach kassenpflichtigen Medikamenten.
@@ -212,11 +286,13 @@ async def epl_sl_suche(eingabe: SLSucheInput) -> str:
 
         return md
 
+    except ToolError:
+        raise
     except Exception as e:
-        return _handle_error(e, "SL-Suche")
+        raise ToolError(_handle_error(e, "SL-Suche")) from e
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
 async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput) -> str:
     """
     GGSL-Deckung bei Geburtsgebrechen pruefen.
@@ -253,11 +329,13 @@ async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput) -> str:
         md += f"**Hinweis:** {info['hinweis']}\n"
         return md
 
+    except ToolError:
+        raise
     except Exception as e:
-        return _handle_error(e, "GGSL-Abfrage")
+        raise ToolError(_handle_error(e, "GGSL-Abfrage")) from e
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
 async def epl_migel_suche(eingabe: MiGeLSucheInput) -> str:
     """
     Suche in der Mittel- und Gegenstaendeliste (MiGeL) nach Medizinprodukten.
@@ -288,11 +366,13 @@ async def epl_migel_suche(eingabe: MiGeLSucheInput) -> str:
         md += f"**ePL-Integration:** {info['migel_integration']}\n"
         return md
 
+    except ToolError:
+        raise
     except Exception as e:
-        return _handle_error(e, "MiGeL-Suche")
+        raise ToolError(_handle_error(e, "MiGeL-Suche")) from e
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
 async def epl_gesuchseingaenge() -> str:
     """
     Aktuelle Gesuchseingaenge fuer die Spezialitaetenliste abrufen.
@@ -322,11 +402,13 @@ async def epl_gesuchseingaenge() -> str:
         md += f"**Hinweis:** {info['hinweis']}\n"
         return md
 
+    except ToolError:
+        raise
     except Exception as e:
-        return _handle_error(e, "Gesuchseingaenge")
+        raise ToolError(_handle_error(e, "Gesuchseingaenge")) from e
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
 async def epl_rechtskontext(eingabe: RechtskontextInput) -> str:
     """
     Rechtlichen Kontext zur Kassenpflicht liefern.
@@ -393,11 +475,13 @@ async def epl_rechtskontext(eingabe: RechtskontextInput) -> str:
         md += f"\n> **Hinweis:** {rechtsrahmen['hinweis']}\n"
         return md
 
+    except ToolError:
+        raise
     except Exception as e:
-        return _handle_error(e, "Rechtskontext")
+        raise ToolError(_handle_error(e, "Rechtskontext")) from e
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
 async def epl_server_info() -> str:
     """
     Serverstatus und API-Phaseninformation anzeigen.
@@ -508,5 +592,40 @@ def epl_schulgesundheit_recherche(thema: str) -> str:
 
 # ─────────────────────────── Einstiegspunkt ────────────────────────────────────
 
+def _run_http() -> None:
+    """
+    Streamable-HTTP-Transport fuer Cloud-Deployments (Render etc.).
+
+    Die Starlette-App wird mit CORS-Middleware umhuellt, damit Browser-Clients
+    (z.B. claude.ai) den ``Mcp-Session-Id``-Header lesen koennen (SDK-004).
+    Origins stammen aus der expliziten Allow-List (kein Wildcard).
+    """
+    import uvicorn
+    from starlette.middleware.cors import CORSMiddleware
+
+    app = mcp.streamable_http_app()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["Mcp-Session-Id", "Content-Type", "Authorization"],
+        expose_headers=["Mcp-Session-Id"],
+    )
+    uvicorn.run(app, host=settings.host, port=settings.port)
+
+
+def main() -> None:
+    """
+    Einstiegspunkt. Transport-Wahl ausschliesslich ueber ``MCP_TRANSPORT``:
+
+    * ``stdio`` (Default) — lokal / Claude Desktop. Oeffnet keine Netzwerk-Ports.
+    * ``streamable-http`` / ``http`` — Cloud (Render), bindet an ``MCP_HOST``/``MCP_PORT``.
+    """
+    if settings.transport in ("http", "streamable-http"):
+        _run_http()
+    else:
+        mcp.run()  # stdio (Default)
+
+
 if __name__ == "__main__":
-    mcp.run()
+    main()

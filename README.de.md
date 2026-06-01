@@ -72,12 +72,18 @@ uvx bag-epl-mcp
 ## Schnellstart
 
 ```bash
-# stdio (fuer Claude Desktop)
+# stdio (fuer Claude Desktop) — Default, oeffnet keine Netzwerk-Ports
 python -m bag_epl_mcp.server
 
-# Streamable HTTP (Port 8000)
-python -m bag_epl_mcp.server --http --port 8000
+# Streamable HTTP (Cloud) — Transport-Wahl ueber Env-Variable
+MCP_TRANSPORT=streamable-http MCP_HOST=0.0.0.0 MCP_PORT=8000 \
+  pip install -e ".[http]" && python -m bag_epl_mcp.server
 ```
+
+> **Transport und Host werden ausschliesslich ueber Umgebungsvariablen**
+> gesteuert (`MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT`). Default ist `stdio`;
+> `MCP_HOST` ist `127.0.0.1` und sollte nur im Container auf `0.0.0.0` gesetzt
+> werden. Sicherheitsmodell: siehe [`docs/SECURITY.md`](docs/SECURITY.md).
 
 ---
 
