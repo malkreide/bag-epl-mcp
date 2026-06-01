@@ -33,35 +33,32 @@
     "checks_total": 68,
     "not_applicable": 24,
     "applicable": 44,
-    "pass": 36,
-    "partial": 8,
+    "pass": 39,
+    "partial": 5,
     "fail": 0,
-    "findings_total": 8
+    "findings_total": 5
   },
-  "follow_up_2026_06_01": "Post-re-audit remediation closed SDK-003 and OBS-003 (ctx injection + per-call bound structured logging) and fully wired OBS-006 (TracerProvider + OTLP, opt-in). pass 34->36, partial 10->8.",
+  "follow_up_2026_06_01": "Post-re-audit remediation closed SDK-003, OBS-003 (ctx injection + per-call bound structured logging), SEC-005 (DNS-pinned transport: single resolution, IP pinned, TLS against hostname), SDK-002 (typed output schemas + structuredContent on all 6 tools, hybrid with curated Markdown) and OBS-006 (OpenTelemetry on by default; silent no-op without the [otel] extra). Added deploy/haproxy.cfg for SCALE-002/003 scaling path. pass 34->39, partial 10->5.",
   "delta_vs_baseline": {
-    "pass": "+25 (11 -> 36)",
-    "partial": "-18 (26 -> 8)",
+    "pass": "+28 (11 -> 39)",
+    "partial": "-21 (26 -> 5)",
     "fail": "-7 (7 -> 0)",
-    "resolved": ["ARCH-002","ARCH-003","ARCH-004","ARCH-009","ARCH-012","SDK-001","SDK-003","SDK-004","SEC-004","SEC-007","SEC-016","SEC-018","SEC-019","SEC-021","SEC-022","SCALE-001","SCALE-004","SCALE-006","OBS-001","OBS-002","OBS-003","CH-004","OPS-001","OPS-002","OPS-003"]
+    "resolved": ["ARCH-002","ARCH-003","ARCH-004","ARCH-009","ARCH-012","SDK-001","SDK-002","SDK-003","SDK-004","SEC-004","SEC-005","SEC-007","SEC-016","SEC-018","SEC-019","SEC-021","SEC-022","SCALE-001","SCALE-004","SCALE-006","OBS-001","OBS-002","OBS-003","OBS-006","CH-004","OPS-001","OPS-002","OPS-003"]
   },
   "findings_by_severity": {
     "critical": 1,
-    "high": 3,
-    "medium": 4,
+    "high": 2,
+    "medium": 2,
     "low": 0
   },
   "production_ready": true,
-  "production_ready_rationale": "0 failed checks; all 4 baseline-critical items resolved except SEC-009, which is a documented accepted-risk (no auth, public read-only data, single-instance). The advertised cloud transport is implemented and smoke-tested. READY for the documented Phase-1, single-instance deployment. The 10 remaining partials are either documented accepted-risk or deferred to Phase 2 / multi-instance (SCALE-002/003, SEC-005) and do not block a Phase-1 release.",
+  "production_ready_rationale": "0 failed checks; all 4 baseline-critical items resolved except SEC-009, which is a documented accepted-risk (no auth, public read-only data, single-instance). The advertised cloud transport is implemented and smoke-tested. READY for the documented Phase-1, single-instance deployment. The 5 remaining partials are documented accepted-risk (SEC-009, SEC-014, SEC-015) or deferred to multi-instance (SCALE-002/003) and do not block a Phase-1 release.",
   "remaining_findings": [
     {"id": "SEC-009", "severity": "critical", "status": "partial", "disposition": "accepted-risk", "note": "No auth/session binding by design; documented in docs/SECURITY.md (no user identity, public read-only data). Re-introduce signed session binding if auth/per-user state is ever added."},
-    {"id": "SEC-005", "severity": "high", "status": "partial", "disposition": "deferred", "note": "Code-layer allow-list + resolved-IP blocklist in place; full DNS-pinning (single resolution reused for the TCP connection) not yet implemented. Low residual risk given fixed admin.ch hosts."},
-    {"id": "SCALE-002", "severity": "high", "status": "partial", "disposition": "deferred-multi-instance", "note": "Single-instance Phase-1 deployment documented; sticky sessions / shared session store only needed when horizontally scaled."},
-    {"id": "SCALE-003", "severity": "high", "status": "partial", "disposition": "deferred-multi-instance", "note": "Edge-LB Mcp-Session-Id routing only relevant for >1 replica; single-instance constraint documented."},
-    {"id": "SDK-002", "severity": "medium", "status": "partial", "disposition": "by-design", "note": "JSON output now uses a consistent envelope (source/provenance/match_type/count/results), but tool return annotation stays `str` to preserve the curated Markdown UX."},
+    {"id": "SCALE-002", "severity": "high", "status": "partial", "disposition": "deferred-multi-instance", "note": "Single-instance Phase-1 deployment; sticky sessions only needed when horizontally scaled. Reference HAProxy stick-table config in deploy/haproxy.cfg; full pass requires an actual multi-instance failover test."},
+    {"id": "SCALE-003", "severity": "high", "status": "partial", "disposition": "deferred-multi-instance", "note": "Edge-LB Mcp-Session-Id routing only relevant for >1 replica; deploy/haproxy.cfg documents the routing + TTL for the scaling path."},
     {"id": "SEC-014", "severity": "medium", "status": "partial", "disposition": "accepted-risk", "note": "No MCP gateway tool allow-list; documented in docs/SECURITY.md (single public read-only server, no enterprise context)."},
-    {"id": "SEC-015", "severity": "medium", "status": "partial", "disposition": "accepted-risk", "note": "No pre-flight tool-poisoning detection; static own tools, documented decision."},
-    {"id": "OBS-006", "severity": "medium", "status": "partial", "disposition": "opt-in", "note": "OpenTelemetry fully wired (TracerProvider + OTLP exporter + Starlette/httpx auto-instrumentation) but opt-in via [otel] extra + MCP_OTEL_ENABLED; off by default and stdio tool calls produce no spans."}
+    {"id": "SEC-015", "severity": "medium", "status": "partial", "disposition": "accepted-risk", "note": "No pre-flight tool-poisoning detection; static own tools, documented decision."}
   ],
   "release_proposal": {
     "current_version": "0.1.0",

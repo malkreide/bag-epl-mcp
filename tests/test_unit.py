@@ -48,6 +48,16 @@ def _fake_getaddrinfo(ip: str):
     return _inner
 
 
+def _text(result):
+    """Menschenlesbarer content-Block einer Tool-Antwort (SDK-002 CallToolResult)."""
+    return result.content[0].text
+
+
+def _struct(result):
+    """structuredContent einer Tool-Antwort (SDK-002)."""
+    return result.structuredContent
+
+
 # ─────────────────────────── Hilfsfunktionen ───────────────────────────────────
 
 class TestPaginateHelper:
@@ -158,17 +168,22 @@ class TestSLSucheMocked:
     async def test_sl_suche_tool_markdown(self):
         respx.get(f"{SL_API_URL}/search").mock(side_effect=httpx.ConnectError("no api"))
         result = await epl_sl_suche(SLSucheInput(suchbegriff="Methylphenidat"))
-        assert "SL-Suche" in result and "Methylphenidat" in result
+        text = _text(result)
+        assert "SL-Suche" in text and "Methylphenidat" in text
         # CH-004: Quelle/Lizenz im Markdown-Footer
-        assert OGD_LICENSE in result and "sl.bag.admin.ch" in result
+        assert OGD_LICENSE in text and "sl.bag.admin.ch" in text
+        # SDK-002: getyptes structuredContent immer mitgeliefert
+        assert _struct(result)["match_type"] == "none"
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_sl_suche_tool_json_envelope(self):
         respx.get(f"{SL_API_URL}/search").mock(side_effect=httpx.ConnectError("no api"))
         result = await epl_sl_suche(SLSucheInput(suchbegriff="Aspirin", format=ResponseFormat.JSON))
-        data = json.loads(result)
-        # SDK-002 Envelope + ARCH-003 match_type + CH-004 provenance/license
+        # SDK-002: content-Text ist JSON, structuredContent das getypte Envelope
+        data = json.loads(_text(result))
+        assert data == _struct(result)
+        # ARCH-003 match_type + CH-004 provenance/license
         assert data["match_type"] == "none"
         assert data["count"] == 0 and data["results"] == []
         assert data["provenance"]["license"] == OGD_LICENSE
@@ -183,8 +198,9 @@ class TestSLSucheMocked:
         result = await _sl_website_suche("Aspirin")
         assert result["results"][0]["name"] == "Aspirin Cardio"
         # Tool klassifiziert echte Treffer als "exact"
-        tool_json = await epl_sl_suche(SLSucheInput(suchbegriff="Aspirin", format=ResponseFormat.JSON))
-        assert json.loads(tool_json)["match_type"] == "exact"
+        tool = await epl_sl_suche(SLSucheInput(suchbegriff="Aspirin", format=ResponseFormat.JSON))
+        assert _struct(tool)["match_type"] == "exact"
+        assert _struct(tool)["results"][0]["name"] == "Aspirin Cardio"
 
 
 # ─────────────────────────── GGSL / MiGeL / Gesuche / Recht ────────────────────
@@ -193,12 +209,15 @@ class TestGGSL:
     @pytest.mark.asyncio
     async def test_ggsl_markdown(self):
         result = await epl_ggsl_abfrage(GGSLAbfrageInput(geburtsgebrechen_nr="313"))
-        assert "313" in result and "IVG" in result and OGD_LICENSE in result
+        text = _text(result)
+        assert "313" in text and "IVG" in text and OGD_LICENSE in text
+        assert _struct(result)["geburtsgebrechen_nr"] == "313"
 
     @pytest.mark.asyncio
     async def test_ggsl_json(self):
         result = await epl_ggsl_abfrage(GGSLAbfrageInput(geburtsgebrechen_nr="404", format=ResponseFormat.JSON))
-        data = json.loads(result)
+        data = json.loads(_text(result))
+        assert data == _struct(result)
         assert data["geburtsgebrechen_nr"] == "404" and "rechtsgrundlage" in data
         assert data["provenance"]["license"] == OGD_LICENSE
 
@@ -207,12 +226,15 @@ class TestMiGeL:
     @pytest.mark.asyncio
     async def test_migel_markdown(self):
         result = await epl_migel_suche(MiGeLSucheInput(suchbegriff="Rollstuhl"))
-        assert "Rollstuhl" in result and "KLV" in result
+        text = _text(result)
+        assert "Rollstuhl" in text and "KLV" in text
+        assert _struct(result)["suchbegriff"] == "Rollstuhl"
 
     @pytest.mark.asyncio
     async def test_migel_json_envelope(self):
         result = await epl_migel_suche(MiGeLSucheInput(suchbegriff="Hoergeraet", format=ResponseFormat.JSON))
-        data = json.loads(result)
+        data = json.loads(_text(result))
+        assert data == _struct(result)
         assert data["suchbegriff"] == "Hoergeraet"
         assert data["match_type"] == "none" and data["results"] == []
         assert data["provenance"]["source"] == "BAG MiGeL"
@@ -222,19 +244,23 @@ class TestGesuchseingaenge:
     @pytest.mark.asyncio
     async def test_gesuchseingaenge(self):
         result = await epl_gesuchseingaenge()
-        assert "Gesuchseingaenge" in result and "sl.bag.admin.ch" in result
+        assert "Gesuchseingaenge" in _text(result) and "sl.bag.admin.ch" in _text(result)
+        assert _struct(result)["link"].startswith("https://sl.bag.admin.ch")
 
 
 class TestRechtskontext:
     @pytest.mark.asyncio
     async def test_rechtskontext_markdown(self):
         result = await epl_rechtskontext(RechtskontextInput(frage="Welche Gesetze regeln die SL?"))
-        assert "KVG" in result and "KLV" in result and "WZW" in result
+        text = _text(result)
+        assert "KVG" in text and "KLV" in text and "WZW" in text
+        assert len(_struct(result)["gesetze"]) >= 3
 
     @pytest.mark.asyncio
     async def test_rechtskontext_json(self):
         result = await epl_rechtskontext(RechtskontextInput(frage="Rechtsgrundlage SL", format=ResponseFormat.JSON))
-        data = json.loads(result)
+        data = json.loads(_text(result))
+        assert data == _struct(result)
         assert len(data["gesetze"]) >= 3 and "wzw_kriterien" in data
         assert "provenance" in data
 
@@ -243,9 +269,13 @@ class TestServerInfo:
     @pytest.mark.asyncio
     async def test_server_info(self):
         result = await epl_server_info()
-        assert "BAG ePL MCP Server" in result and "Phase 1" in result
+        text = _text(result)
+        assert "BAG ePL MCP Server" in text and "Phase 1" in text
         # ARCH-012: Protokoll-Version dokumentiert
-        assert PROTOCOL_VERSION in result
+        assert PROTOCOL_VERSION in text
+        # SDK-002: getyptes structuredContent
+        assert _struct(result)["protocol_version"] == PROTOCOL_VERSION
+        assert "epl_sl_suche" in _struct(result)["tools"]
 
 
 # ─────────────────────────── Egress-Guard (SEC-004/005/021) ───────────────────
@@ -263,14 +293,21 @@ class TestEgressGuard:
             _assert_safe_url("https://evil.example.com/steal")
 
     def test_private_ip_abgelehnt(self, monkeypatch):
+        from bag_epl_mcp.server import _resolve_and_validate
         monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("127.0.0.1"))
         with pytest.raises(ToolError):
-            _assert_safe_url("https://sl.bag.admin.ch/api/search")
+            _resolve_and_validate("sl.bag.admin.ch", 443)
 
     def test_metadata_ip_abgelehnt(self, monkeypatch):
+        from bag_epl_mcp.server import _resolve_and_validate
         monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("169.254.169.254"))
         with pytest.raises(ToolError):
-            _assert_safe_url("https://www.bag.admin.ch/x")
+            _resolve_and_validate("www.bag.admin.ch", 443)
+
+    def test_resolve_and_validate_gibt_pinned_ip(self, monkeypatch):
+        from bag_epl_mcp.server import _resolve_and_validate
+        monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("93.184.216.34"))
+        assert _resolve_and_validate("sl.bag.admin.ch", 443) == "93.184.216.34"
 
     @pytest.mark.asyncio
     async def test_http_get_ruft_guard_auf(self):
@@ -282,13 +319,62 @@ class TestEgressGuard:
         assert all(h.endswith(".admin.ch") for h in ALLOWED_HOSTS)
 
 
+# ─────────────────────────── DNS-Pinning (SEC-005) ────────────────────────────
+
+class TestDnsPinning:
+    """Die TCP-Verbindung wird auf die validierte IP gepinnt (SEC-005)."""
+
+    @pytest.mark.asyncio
+    async def test_pinned_backend_waehlt_validierte_ip(self, monkeypatch):
+        from bag_epl_mcp.server import _PinnedNetworkBackend
+        monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("93.184.216.34"))
+        dialed = {}
+
+        class _Inner:
+            async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+                dialed["host"] = host
+                dialed["port"] = port
+                return object()
+
+        backend = _PinnedNetworkBackend(_Inner())
+        await backend.connect_tcp("sl.bag.admin.ch", 443)
+        # Es wird die aufgeloeste IP gewaehlt, nicht der Hostname.
+        assert dialed["host"] == "93.184.216.34" and dialed["port"] == 443
+
+    @pytest.mark.asyncio
+    async def test_pinned_backend_blockt_private_ip(self, monkeypatch):
+        from bag_epl_mcp.server import _PinnedNetworkBackend
+        monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("10.0.0.5"))
+
+        class _Inner:
+            async def connect_tcp(self, *a, **k):  # pragma: no cover - darf nicht erreicht werden
+                raise AssertionError("connect_tcp duerfte nicht aufgerufen werden")
+
+        with pytest.raises(ToolError):
+            await _PinnedNetworkBackend(_Inner()).connect_tcp("sl.bag.admin.ch", 443)
+
+    def test_new_http_client_ist_gepinnt(self):
+        from bag_epl_mcp.server import _new_http_client, _PinnedNetworkBackend
+        client = _new_http_client()
+        try:
+            backend = client._transport._pool._network_backend
+            assert isinstance(backend, _PinnedNetworkBackend)
+        finally:
+            pass
+
+
 # ─────────────────────────── Settings & Transport ─────────────────────────────
 
 class TestSettings:
     def test_defaults_sicher(self):
         s = ServerSettings()
         assert s.transport == "stdio" and s.host == "127.0.0.1"
-        assert s.otel_enabled is False
+        # OBS-006: Tracing standardmaessig aktiv (stiller No-op ohne [otel]-Extra).
+        assert s.otel_enabled is True
+
+    def test_otel_abschaltbar(self, monkeypatch):
+        monkeypatch.setenv("MCP_OTEL_ENABLED", "false")
+        assert ServerSettings().otel_enabled is False
 
     def test_env_override(self, monkeypatch):
         monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
@@ -389,8 +475,15 @@ class TestObservability:
     @pytest.mark.asyncio
     async def test_tools_akzeptieren_ctx_injection(self):
         # FastMCP injiziert Context; defensiver Zugriff -> kein Crash.
+        from mcp.types import CallToolResult
         res = await mcp.call_tool("epl_server_info", {})
-        text = res[0][0].text if isinstance(res, tuple) else res[0].text
+        if isinstance(res, CallToolResult):          # SDK-002: content + structuredContent
+            text = res.content[0].text
+            assert res.structuredContent["protocol_version"] == PROTOCOL_VERSION
+        elif isinstance(res, tuple):
+            text = res[0][0].text
+        else:
+            text = res[0].text
         assert "BAG ePL MCP Server" in text
 
     def test_alle_tools_haben_ctx_param(self):

@@ -46,24 +46,30 @@ MCP SDK's default session manager; the server adds no custom `user_id:session_id
 binding because there is no user identity to bind and no confidential per-session
 data to protect.
 
-**Operational requirement:** run Phase 1 as a **single instance**. Sticky-session
-load balancing / shared session store (SCALE-002/003) only become necessary if
-the deployment is horizontally scaled. Introducing authentication or per-user
-state in a later phase **must** re-introduce signed session binding and trigger
-a re-audit.
+**Operational requirement:** run Phase 1 as a **single instance**. When scaling
+horizontally, sticky-session load balancing keyed on the `Mcp-Session-Id` header
+is required so stateful Streamable-HTTP sessions stay on one backend
+(SCALE-002/003) — a reference HAProxy stick-table config with an explicit
+session TTL is provided in [`../deploy/haproxy.cfg`](../deploy/haproxy.cfg).
+Introducing authentication or per-user state in a later phase **must**
+re-introduce signed session binding and trigger a re-audit.
 
 ## 4. Egress controls (SEC-004 / SEC-005 / SEC-021)
 
-All outbound requests pass through `_assert_safe_url()` in `src/bag_epl_mcp/server.py`
-before any HTTP call:
+The fast pre-check `_assert_safe_url()` runs before any outbound call (HTTPS-only
++ host allow-list). The actual connection is made through a **DNS-pinned**
+transport (`_PinnedNetworkBackend`) so the hostname is resolved **exactly once**,
+the resolved IP is validated and the TCP connection is pinned to it, while TLS
+SNI and certificate verification still use the original hostname (SEC-005,
+eliminates the resolve/connect TOCTOU). Concretely:
 
 - **HTTPS only** — non-`https` schemes are rejected.
 - **Code-layer allow-list** — the host must be in the immutable
   `ALLOWED_HOSTS` frozenset (`sl.bag.admin.ch`, `www.bag.admin.ch`,
   `www.fedlex.admin.ch`). Default-deny.
-- **Resolved-IP blocklist** — private, loopback, link-local and reserved IPs
-  are rejected (blocks SSRF pivots and the cloud metadata endpoint
-  `169.254.169.254`).
+- **Single-resolution + pinned IP** — `_resolve_and_validate()` rejects private,
+  loopback, link-local and reserved IPs (blocks SSRF pivots and the cloud
+  metadata endpoint `169.254.169.254`) and returns the pinned address.
 
 **Defense-in-depth (deployment):** add a network-layer egress policy
 (e.g. Render egress rules / Kubernetes `NetworkPolicy`) restricting outbound

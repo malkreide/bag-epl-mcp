@@ -45,8 +45,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (opt-in, one per tool) with a shared `conftest.py` (OPS-001).
 - `ctx: Context` injection in all tools + per-tool-call bound structured logging
   context (`tool`, `correlation_id`, `request_id`/`client_id`) — SDK-003 / OBS-003.
-- OpenTelemetry now configures a real `TracerProvider` + OTLP exporter when
-  enabled (`[otel]` extra, `MCP_OTEL_ENABLED`) — OBS-006.
+- **Structured tool output (SDK-002):** all 6 tools now declare typed Pydantic
+  output schemas and return `structuredContent` alongside the curated Markdown
+  (`content`) — a hybrid `CallToolResult`, so machine consumers get a validated
+  schema with no loss of the human-readable output.
+- **OpenTelemetry on by default (OBS-006):** `MCP_OTEL_ENABLED` now defaults to
+  on; a silent no-op when the `[otel]` extra isn't installed (base installs and
+  stdout are unaffected). `TracerProvider` + OTLP exporter +
+  Starlette/httpx auto-instrumentation; set `MCP_OTEL_ENABLED=0` to disable.
+- **DNS-pinned HTTP transport** (`_PinnedNetworkBackend`): the host is resolved
+  exactly once, the resolved IP is validated and the TCP connection pinned to it,
+  while TLS SNI/cert verification still use the hostname — eliminates the
+  resolve/connect TOCTOU (SEC-005).
+- `deploy/haproxy.cfg`: reference sticky-session (Mcp-Session-Id stick-table +
+  TTL) config for the horizontal-scaling path (SCALE-002/003).
 
 ### Changed
 - Console entrypoint is now `bag_epl_mcp.server:main` (transport-aware).
@@ -64,8 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SEC-016, SEC-019, SEC-009, OBS-001/002 (Phase 1); SEC-007, SCALE-004,
   SCALE-006, SDK-001, OBS-003 (Phase 2); and SEC-018, SEC-022, ARCH-002,
   ARCH-012, SDK-002, ARCH-003, CH-004, OBS-006, OPS-001/002/003 (Phase 3);
-  and SDK-003, OBS-003 (post-re-audit follow-up). See `docs/audit/2026-06-01/`
-  and `docs/audit/2026-06-01-reaudit/`.
+  and SDK-003, OBS-003, SEC-005, SDK-002, OBS-006 (post-re-audit follow-up). See
+  `docs/audit/2026-06-01/` and `docs/audit/2026-06-01-reaudit/`.
 
 ## [0.1.0] - 2026-04-13
 
