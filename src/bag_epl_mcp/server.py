@@ -15,15 +15,34 @@ from __future__ import annotations
 import ipaddress
 import json
 import socket
+import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from enum import StrEnum
 from urllib.parse import urlsplit
 
 import httpx
+import structlog
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# ─────────────────────────── Logging (OBS-003/004) ─────────────────────────────
+# Strukturierte JSON-Logs ausschliesslich nach STDERR — STDOUT ist beim
+# stdio-Transport fuer den JSON-RPC-Stream reserviert (OBS-004).
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer(),
+    ],
+    logger_factory=structlog.WriteLoggerFactory(file=sys.stderr),
+    cache_logger_on_first_use=True,
+)
+log = structlog.get_logger("bag_epl_mcp")
 
 
 # ─────────────────────────── Settings (ARCH-004) ───────────────────────────────
@@ -40,15 +59,38 @@ class ServerSettings(BaseSettings):
     transport: str = "stdio"
     # SEC-016: Default 127.0.0.1 — 0.0.0.0 nur explizit im Container setzen.
     host: str = "127.0.0.1"
-    port: int = 8000
+    # MCP_PORT bevorzugt; faellt auf PORT zurueck (von Render/PaaS injiziert).
+    port: int = Field(default=8000, validation_alias=AliasChoices("MCP_PORT", "PORT"))
     # SDK-004: explizite Origin-Allow-List statt Wildcard.
     cors_origins: list[str] = ["https://claude.ai"]
 
 
 settings = ServerSettings()
 
+
+# ─────────────────────────── Lifespan / HTTP-Client-Pool (SDK-001) ─────────────
+# Ein einziger, wiederverwendeter AsyncClient (Connection-Pooling/Keep-Alive)
+# statt pro Tool-Call einen neuen Client zu erzeugen. Wird beim Server-Start
+# initialisiert und beim Shutdown sauber geschlossen.
+_http_client: httpx.AsyncClient | None = None
+
+
+@asynccontextmanager
+async def _lifespan(_server: FastMCP) -> AsyncIterator[dict]:
+    """Initialisiert den gepoolten HTTP-Client und raeumt ihn beim Shutdown ab."""
+    global _http_client
+    _http_client = httpx.AsyncClient(timeout=HTTP_TIMEOUT)
+    log.info("server_startup", transport=settings.transport)
+    try:
+        yield {"http_client": _http_client}
+    finally:
+        await _http_client.aclose()
+        _http_client = None
+        log.info("server_shutdown")
+
+
 # ─────────────────────────── Server ────────────────────────────────────────────
-mcp = FastMCP("bag_epl_mcp", host=settings.host, port=settings.port)
+mcp = FastMCP("bag_epl_mcp", host=settings.host, port=settings.port, lifespan=_lifespan)
 
 # ─────────────────────────── Konstanten ────────────────────────────────────────
 SL_BASE_URL       = "https://sl.bag.admin.ch"
@@ -94,6 +136,7 @@ def _assert_safe_url(url: str) -> None:
 
     host = parts.hostname or ""
     if host not in ALLOWED_HOSTS:
+        log.warning("egress_blocked", reason="host_not_allowed", host=host)
         raise ToolError("Ziel-Host ist nicht in der erlaubten Egress-Liste.")
 
     try:
@@ -104,6 +147,7 @@ def _assert_safe_url(url: str) -> None:
     for *_, sockaddr in infos:
         ip = ipaddress.ip_address(sockaddr[0])
         if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            log.warning("egress_blocked", reason="unsafe_ip", host=host, ip=str(ip))
             raise ToolError("Aufgeloeste IP-Adresse ist nicht erlaubt (SSRF-Schutz).")
 
 # ─────────────────────────── Enum ──────────────────────────────────────────────
@@ -116,8 +160,15 @@ class ResponseFormat(StrEnum):
 # ─────────────────────────── Hilfsfunktionen ───────────────────────────────────
 
 async def _http_get(url: str, params: dict | None = None) -> httpx.Response:
-    """Async HTTP GET mit Timeout. Validiert die Ziel-URL gegen die Egress-Allow-List."""
+    """
+    Async HTTP GET mit Timeout. Validiert die Ziel-URL gegen die Egress-Allow-List
+    und nutzt — falls vorhanden — den gepoolten Lifespan-Client (SDK-001).
+    """
     _assert_safe_url(url)
+    log.debug("http_get", url=url)
+    if _http_client is not None:
+        return await _http_client.get(url, params=params)
+    # Fallback (z.B. Direktaufruf ausserhalb des Server-Lifespans / Tests).
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
         return await client.get(url, params=params)
 
@@ -125,6 +176,11 @@ async def _http_get(url: str, params: dict | None = None) -> httpx.Response:
 def _handle_error(error: Exception, context: str = "") -> str:
     """Einheitliche Fehlerbehandlung mit deutschen Meldungen."""
     prefix = f"Fehler bei {context}: " if context else "Fehler: "
+
+    # OBS-002: vollstaendige Details NUR serverseitig (stderr) protokollieren,
+    # niemals an den LLM zurueckgeben.
+    log.error("tool_error", context=context or None,
+              error_type=type(error).__name__, detail=str(error))
 
     if isinstance(error, httpx.HTTPStatusError):
         status = error.response.status_code
@@ -592,18 +648,26 @@ def epl_schulgesundheit_recherche(thema: str) -> str:
 
 # ─────────────────────────── Einstiegspunkt ────────────────────────────────────
 
-def _run_http() -> None:
+def _build_http_app():
     """
-    Streamable-HTTP-Transport fuer Cloud-Deployments (Render etc.).
+    Baut die Streamable-HTTP-Starlette-App fuer Cloud-Deployments.
 
-    Die Starlette-App wird mit CORS-Middleware umhuellt, damit Browser-Clients
-    (z.B. claude.ai) den ``Mcp-Session-Id``-Header lesen koennen (SDK-004).
-    Origins stammen aus der expliziten Allow-List (kein Wildcard).
+    * Health-Endpoint ``/healthz`` fuer Load-Balancer (SCALE-004) — das
+      ``/mcp``-Endpoint verlangt Session-Header und eignet sich nicht als Probe.
+    * CORS-Middleware, damit Browser-Clients (claude.ai) den
+      ``Mcp-Session-Id``-Header lesen koennen (SDK-004); Origins aus der
+      expliziten Allow-List (kein Wildcard).
     """
-    import uvicorn
     from starlette.middleware.cors import CORSMiddleware
+    from starlette.requests import Request
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+
+    async def _healthz(_request: Request) -> PlainTextResponse:
+        return PlainTextResponse("ok")
 
     app = mcp.streamable_http_app()
+    app.router.routes.append(Route("/healthz", _healthz, methods=["GET"]))
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -611,7 +675,15 @@ def _run_http() -> None:
         allow_headers=["Mcp-Session-Id", "Content-Type", "Authorization"],
         expose_headers=["Mcp-Session-Id"],
     )
-    uvicorn.run(app, host=settings.host, port=settings.port)
+    return app
+
+
+def _run_http() -> None:
+    """Streamable-HTTP-Transport fuer Cloud-Deployments (Render etc.) starten."""
+    import uvicorn
+
+    log.info("http_listen", host=settings.host, port=settings.port)
+    uvicorn.run(_build_http_app(), host=settings.host, port=settings.port)
 
 
 def main() -> None:

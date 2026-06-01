@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/SECURITY.md` — threat model (Lethal-Trifecta assessment, no-auth/
   session rationale, egress and host-binding policy).
 - `[http]` optional dependency group (`uvicorn`, `starlette`).
+- **Multi-stage `Dockerfile`** (slim base, non-root UID 10001, `HEALTHCHECK`)
+  and `render.yaml` Blueprint with health check and resource plan.
+- `/healthz` HTTP endpoint for load-balancer probes.
+- **Lifespan-managed pooled `httpx.AsyncClient`** (connection reuse / keep-alive)
+  instead of a fresh client per request.
+- **Structured JSON logging** via `structlog`, written to **stderr** (stdout
+  stays reserved for the stdio JSON-RPC stream); full error detail is logged
+  server-side while the model only sees a sanitized message.
+- `$PORT` fallback for `MCP_PORT` (PaaS/Render compatibility).
 
 ### Changed
 - Console entrypoint is now `bag_epl_mcp.server:main` (transport-aware).
@@ -32,7 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - Addresses audit findings SCALE-001, ARCH-009, SDK-004, SEC-004/005/021,
-  SEC-016, SEC-019, SEC-009 and OBS-001/002 (see `docs/audit/2026-06-01/`).
+  SEC-016, SEC-019, SEC-009, OBS-001/002 (Phase 1) and SEC-007, SCALE-004,
+  SCALE-006, SDK-001, OBS-003 (Phase 2). See `docs/audit/2026-06-01/`.
 
 ## [0.1.0] - 2026-04-13
 

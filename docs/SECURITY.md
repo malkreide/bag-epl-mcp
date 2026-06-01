@@ -77,6 +77,21 @@ the network policy together, and note it in the `CHANGELOG`.
 - `MCP_HOST=0.0.0.0` must be set **only** inside a container / cloud
   environment that fronts the service — never on a shared local machine.
 
+### Container hardening (SEC-007 / SCALE-004 / SCALE-006)
+
+The provided multi-stage `Dockerfile` runs the service as a **non-root** user
+(UID 10001) from a slim base image and declares a `HEALTHCHECK` against
+`/healthz`. The `render.yaml` Blueprint pins a resource `plan` (memory/CPU
+limit) and wires the health check. When running the image directly, also apply
+runtime limits, e.g.:
+
+```bash
+docker run --read-only --cap-drop ALL \
+  --memory 256m --cpus 0.5 --ulimit nofile=4096:4096 \
+  -e MCP_TRANSPORT=streamable-http -e MCP_HOST=0.0.0.0 -p 8000:8000 \
+  bag-epl-mcp
+```
+
 ## 6. Gateway / tool governance (SEC-014 / SEC-015)
 
 The server publishes a small, fixed set of **six read-only** tools, all
