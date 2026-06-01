@@ -140,6 +140,10 @@ Or with `uvx`:
    - `MCP_PORT=8000` (or Render's `$PORT`)
    - *(optional)* `MCP_CORS_ORIGINS='["https://claude.ai"]'` to extend the
      browser CORS allow-list
+   - *(optional)* OpenTelemetry tracing is **on by default** but a no-op unless
+     the tracing deps are installed — build with `pip install -e ".[http,otel]"`
+     and point `OTEL_EXPORTER_OTLP_ENDPOINT` at your collector. Set
+     `MCP_OTEL_ENABLED=0` to disable.
 5. Start command: `python -m bag_epl_mcp.server`
 6. In claude.ai under Settings \u2192 MCP Servers, add: `https://your-app.onrender.com/mcp`
 
@@ -214,6 +218,7 @@ every `mcp` SDK bump \u2014 see the versioning policy in [`docs/ROADMAP.md`](doc
 - **Rate limits:** The SL website (sl.bag.admin.ch) is a public Angular SPA; the server enforces a 30s timeout per request. Use `limit` parameters conservatively.
 - **Data freshness:** Phase 1 tools link to live BAG sources. No caching is performed by this server.
 - **Data licence (OGD-CH):** The underlying BAG/Fedlex data is Swiss Open Government Data, licensed **CC BY 4.0**. Tool outputs carry a `source` / `provenance` block (JSON) or a source-and-licence footer (Markdown) so attribution is preserved.
+- **Structured output:** every tool returns both a human-readable Markdown/JSON block (`content`) and a typed `structuredContent` validated against a per-tool output schema, so MCP clients can consume results programmatically without parsing prose.
 - **Terms of service:** Data is subject to the ToS of [sl.bag.admin.ch](https://sl.bag.admin.ch), [bag.admin.ch](https://www.bag.admin.ch), and [fedlex.admin.ch](https://www.fedlex.admin.ch).
 - **No guarantees:** This is a community project, not affiliated with the BAG or any government entity. Availability depends on upstream sources.
 

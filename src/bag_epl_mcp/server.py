@@ -28,7 +28,7 @@ import httpx
 import structlog
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
-from mcp.types import ToolAnnotations
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -84,8 +84,10 @@ class ServerSettings(BaseSettings):
     port: int = Field(default=8000, validation_alias=AliasChoices("MCP_PORT", "PORT"))
     # SDK-004: explizite Origin-Allow-List statt Wildcard.
     cors_origins: list[str] = ["https://claude.ai"]
-    # OBS-006: OpenTelemetry-Tracing (opt-in, benoetigt das [otel]-Extra).
-    otel_enabled: bool = False
+    # OBS-006: OpenTelemetry-Tracing standardmaessig aktiv. Greift nur, wenn das
+    # [otel]-Extra installiert ist (sonst stiller No-op); mit MCP_OTEL_ENABLED=0
+    # deaktivierbar. Exporter-Endpoint via OTEL_EXPORTER_OTLP_ENDPOINT.
+    otel_enabled: bool = True
 
 
 settings = ServerSettings()
@@ -147,9 +149,103 @@ class Provenance(BaseModel):
     phase: str = "Phase 1"
 
 
-def _provenance(source: str, url: str) -> dict:
+def _provenance(source: str, url: str) -> Provenance:
     """Erzeugt einen Provenance-Block (Quelle + Lizenz) fuer Tool-Antworten."""
-    return Provenance(source=source, url=url).model_dump()
+    return Provenance(source=source, url=url)
+
+
+# ─────────── Strukturierte Tool-Ausgaben / Output-Schemas (SDK-002) ─────────────
+# Jedes Tool deklariert ein getyptes Envelope als Output-Schema und liefert es als
+# `structuredContent` zurueck — zusaetzlich zur kuratierten Markdown-Ausgabe im
+# `content`-Block (Hybrid, kein UX-Verlust). Siehe `_structured_result`.
+
+class BaseEnvelope(BaseModel):
+    """Gemeinsame Huelle aller strukturierten Tool-Ausgaben (SDK-002 / CH-004)."""
+    source: str
+    provenance: Provenance
+
+
+class SLTreffer(BaseModel):
+    """Ein SL-Suchtreffer. ``extra='allow'``, da die Upstream-API zusaetzliche
+    Felder liefern kann, sobald sie oeffentlich ist."""
+    model_config = ConfigDict(extra="allow")
+    name: str | None = None
+
+
+class SLSucheEnvelope(BaseEnvelope):
+    suchbegriff: str
+    match_type: MatchType
+    count: int
+    results: list[SLTreffer] = Field(default_factory=list)
+    hinweis: str | None = None
+    direkt_link: str | None = None
+    fhir_status: str | None = None
+
+
+class GGSLEnvelope(BaseEnvelope):
+    geburtsgebrechen_nr: str
+    status: str
+    erklaerung: str
+    link: str
+    rechtsgrundlage: str
+    hinweis: str
+
+
+class MiGeLEnvelope(BaseEnvelope):
+    suchbegriff: str
+    status: str
+    erklaerung: str
+    link: str
+    rechtsgrundlage: str
+    migel_integration: str
+    match_type: MatchType = "none"
+    count: int = 0
+    results: list[dict] = Field(default_factory=list)
+
+
+class GesuchseingaengeEnvelope(BaseEnvelope):
+    beschreibung: str
+    link: str
+    direkt_link_bag: str
+    hinweis: str
+
+
+class Gesetz(BaseModel):
+    kuerzel: str
+    titel: str
+    sr_nummer: str
+    fedlex: str
+    relevante_artikel: list[str]
+
+
+class RechtskontextEnvelope(BaseEnvelope):
+    frage: str
+    gesetze: list[Gesetz]
+    wzw_kriterien: dict[str, str]
+    hinweis: str
+
+
+class ServerInfoEnvelope(BaseEnvelope):
+    server: str
+    version: str
+    protocol_version: str
+    license: str
+    phase: str
+    tools: dict[str, str]
+    phasen: dict[str, str]
+    datenquellen: dict[str, str]
+
+
+def _structured_result(text: str, envelope: BaseModel) -> CallToolResult:
+    """
+    SDK-002: liefert beides zurueck — die kuratierte, menschenlesbare Ausgabe als
+    ``content`` (Markdown oder JSON je nach ``format``) **und** das getypte Envelope
+    als ``structuredContent`` (validiert gegen das Output-Schema des Tools).
+    """
+    return CallToolResult(
+        content=[TextContent(type="text", text=text)],
+        structuredContent=envelope.model_dump(mode="json"),
+    )
 
 # SEC-004 / SEC-021: Egress-Allow-List auf Code-Ebene (immutable).
 # Jeder ausgehende Request muss gegen diese Liste vertrauenswuerdiger
@@ -412,8 +508,8 @@ class RechtskontextInput(BaseModel):
 
 # ─────────────────────────── Tools ─────────────────────────────────────────────
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True))
-async def epl_sl_suche(eingabe: SLSucheInput, ctx: Context | None = None) -> str:
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True), structured_output=True)
+async def epl_sl_suche(eingabe: SLSucheInput, ctx: Context | None = None) -> SLSucheEnvelope:
     """
     Suche in der Spezialitaetenliste (SL) nach kassenpflichtigen Medikamenten.
 
@@ -432,20 +528,21 @@ async def epl_sl_suche(eingabe: SLSucheInput, ctx: Context | None = None) -> str
         # ARCH-003: Treffer klassifizieren; bei "none" Handlungshinweis mitgeben.
         match_type: MatchType = "exact" if results else "none"
 
+        envelope = SLSucheEnvelope(
+            source="BAG Spezialitaetenliste (SL)",
+            provenance=_provenance("BAG Spezialitaetenliste (SL)", SL_BASE_URL),
+            suchbegriff=eingabe.suchbegriff,
+            match_type=match_type,
+            count=len(results),
+            results=[SLTreffer(**r) for r in results],
+            hinweis=ergebnis.get("hinweis"),
+            direkt_link=ergebnis.get("direkt_link"),
+            fhir_status=ergebnis.get("fhir_status"),
+        )
+
         if eingabe.format == ResponseFormat.JSON:
-            envelope = {
-                "source": "BAG Spezialitaetenliste (SL)",
-                "provenance": _provenance("BAG Spezialitaetenliste (SL)", SL_BASE_URL),
-                "suchbegriff": eingabe.suchbegriff,
-                "match_type": match_type,
-                "count": len(results),
-                "results": results,
-            }
-            if "hinweis" in ergebnis:
-                envelope["hinweis"] = ergebnis["hinweis"]
-                envelope["direkt_link"] = ergebnis["direkt_link"]
-                envelope["fhir_status"] = ergebnis["fhir_status"]
-            return json.dumps(envelope, ensure_ascii=False, indent=2)
+            text = json.dumps(envelope.model_dump(mode="json"), ensure_ascii=False, indent=2)
+            return _structured_result(text, envelope)
 
         # Markdown-Ausgabe
         md = f"## SL-Suche: \u00ab{eingabe.suchbegriff}\u00bb\n\n"
@@ -463,7 +560,7 @@ async def epl_sl_suche(eingabe: SLSucheInput, ctx: Context | None = None) -> str
                 md += f"- **{item.get('name', 'Unbekannt')}**\n"
 
         md += f"\n---\n*Quelle: BAG Spezialitaetenliste \u00b7 Lizenz: {OGD_LICENSE} \u00b7 {SL_BASE_URL}*\n"
-        return md
+        return _structured_result(md, envelope)
 
     except ToolError:
         raise
@@ -471,8 +568,8 @@ async def epl_sl_suche(eingabe: SLSucheInput, ctx: Context | None = None) -> str
         raise ToolError(_handle_error(e, "SL-Suche")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput, ctx: Context | None = None) -> str:
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), structured_output=True)
+async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput, ctx: Context | None = None) -> GGSLEnvelope:
     """
     GGSL-Deckung bei Geburtsgebrechen pruefen.
 
@@ -489,33 +586,34 @@ async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput, ctx: Context | None = None
     try:
         gg_nr = eingabe.geburtsgebrechen_nr
 
-        info = {
-            "geburtsgebrechen_nr": gg_nr,
-            "status": "Phase 1 \u2014 Statische Information",
-            "erklaerung": (
+        envelope = GGSLEnvelope(
+            source="BAG GGSL",
+            provenance=_provenance("BAG GGSL", GGSL_INFO_URL),
+            geburtsgebrechen_nr=gg_nr,
+            status="Phase 1 \u2014 Statische Information",
+            erklaerung=(
                 f"Die GGSL listet Medikamente, die bei Geburtsgebrechen Nr. {gg_nr} "
                 "von der IV uebernommen werden. Die vollstaendige Liste ist beim BAG einsehbar."
             ),
-            "link": GGSL_INFO_URL,
-            "rechtsgrundlage": "IVG Art. 13 / GgV (Geburtsgebrechen-Verordnung)",
-            "hinweis": (
+            link=GGSL_INFO_URL,
+            rechtsgrundlage="IVG Art. 13 / GgV (Geburtsgebrechen-Verordnung)",
+            hinweis=(
                 "Fuer die aktuelle Medikamentenliste zu diesem Geburtsgebrechen "
                 "konsultieren Sie bitte die offizielle BAG-Seite."
             ),
-        }
+        )
 
         if eingabe.format == ResponseFormat.JSON:
-            info["source"] = "BAG GGSL"
-            info["provenance"] = _provenance("BAG GGSL", GGSL_INFO_URL)
-            return json.dumps(info, ensure_ascii=False, indent=2)
+            text = json.dumps(envelope.model_dump(mode="json"), ensure_ascii=False, indent=2)
+            return _structured_result(text, envelope)
 
         md = f"## GGSL-Abfrage: Geburtsgebrechen Nr. {gg_nr}\n\n"
-        md += f"> {info['erklaerung']}\n\n"
-        md += f"**Offizielle Quelle:** [BAG GGSL]({info['link']})\n\n"
-        md += f"**Rechtsgrundlage:** {info['rechtsgrundlage']}\n\n"
-        md += f"**Hinweis:** {info['hinweis']}\n"
+        md += f"> {envelope.erklaerung}\n\n"
+        md += f"**Offizielle Quelle:** [BAG GGSL]({envelope.link})\n\n"
+        md += f"**Rechtsgrundlage:** {envelope.rechtsgrundlage}\n\n"
+        md += f"**Hinweis:** {envelope.hinweis}\n"
         md += f"\n---\n*Quelle: BAG GGSL \u00b7 Lizenz: {OGD_LICENSE} \u00b7 {GGSL_INFO_URL}*\n"
-        return md
+        return _structured_result(md, envelope)
 
     except ToolError:
         raise
@@ -523,8 +621,8 @@ async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput, ctx: Context | None = None
         raise ToolError(_handle_error(e, "GGSL-Abfrage")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-async def epl_migel_suche(eingabe: MiGeLSucheInput, ctx: Context | None = None) -> str:
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), structured_output=True)
+async def epl_migel_suche(eingabe: MiGeLSucheInput, ctx: Context | None = None) -> MiGeLEnvelope:
     """
     Suche in der Mittel- und Gegenstaendeliste (MiGeL) nach Medizinprodukten.
 
@@ -538,35 +636,33 @@ async def epl_migel_suche(eingabe: MiGeLSucheInput, ctx: Context | None = None) 
     """
     _bind_call_context(ctx, "epl_migel_suche")
     try:
-        info = {
-            "suchbegriff": eingabe.suchbegriff,
-            "status": "Phase 1 \u2014 Kategorie-basierte Information",
-            "erklaerung": (
+        # ARCH-003: Phase 1 liefert noch keine Live-Treffer -> match_type "none"
+        # mit Handlungshinweis (offizieller Link).
+        envelope = MiGeLEnvelope(
+            source="BAG MiGeL",
+            provenance=_provenance("BAG MiGeL", MIGEL_INFO_URL),
+            suchbegriff=eingabe.suchbegriff,
+            status="Phase 1 \u2014 Kategorie-basierte Information",
+            erklaerung=(
                 f"Die MiGeL-Suche nach \u00ab{eingabe.suchbegriff}\u00bb liefert Informationen "
                 "zu vergueteten Medizinprodukten und Hilfsmitteln."
             ),
-            "link": MIGEL_INFO_URL,
-            "rechtsgrundlage": "KLV Art. 20 / MiGeL-Verordnung",
-            "migel_integration": "MiGeL wird voraussichtlich 2026/2027 in die ePL integriert.",
-        }
+            link=MIGEL_INFO_URL,
+            rechtsgrundlage="KLV Art. 20 / MiGeL-Verordnung",
+            migel_integration="MiGeL wird voraussichtlich 2026/2027 in die ePL integriert.",
+        )
 
         if eingabe.format == ResponseFormat.JSON:
-            # ARCH-003: Phase 1 liefert noch keine Live-Treffer -> match_type "none"
-            # mit Handlungshinweis (offizieller Link).
-            info["source"] = "BAG MiGeL"
-            info["provenance"] = _provenance("BAG MiGeL", MIGEL_INFO_URL)
-            info["match_type"] = "none"
-            info["count"] = 0
-            info["results"] = []
-            return json.dumps(info, ensure_ascii=False, indent=2)
+            text = json.dumps(envelope.model_dump(mode="json"), ensure_ascii=False, indent=2)
+            return _structured_result(text, envelope)
 
         md = f"## MiGeL-Suche: \u00ab{eingabe.suchbegriff}\u00bb\n\n"
-        md += f"> {info['erklaerung']}\n\n"
-        md += f"**Offizielle Quelle:** [BAG MiGeL]({info['link']})\n\n"
-        md += f"**Rechtsgrundlage:** {info['rechtsgrundlage']}\n\n"
-        md += f"**ePL-Integration:** {info['migel_integration']}\n"
+        md += f"> {envelope.erklaerung}\n\n"
+        md += f"**Offizielle Quelle:** [BAG MiGeL]({envelope.link})\n\n"
+        md += f"**Rechtsgrundlage:** {envelope.rechtsgrundlage}\n\n"
+        md += f"**ePL-Integration:** {envelope.migel_integration}\n"
         md += f"\n---\n*Quelle: BAG MiGeL \u00b7 Lizenz: {OGD_LICENSE} \u00b7 {MIGEL_INFO_URL}*\n"
-        return md
+        return _structured_result(md, envelope)
 
     except ToolError:
         raise
@@ -574,8 +670,8 @@ async def epl_migel_suche(eingabe: MiGeLSucheInput, ctx: Context | None = None) 
         raise ToolError(_handle_error(e, "MiGeL-Suche")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-async def epl_gesuchseingaenge(ctx: Context | None = None) -> str:
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), structured_output=True)
+async def epl_gesuchseingaenge(ctx: Context | None = None) -> GesuchseingaengeEnvelope:
     """
     Aktuelle Gesuchseingaenge fuer die Spezialitaetenliste abrufen.
 
@@ -588,27 +684,29 @@ async def epl_gesuchseingaenge(ctx: Context | None = None) -> str:
     """
     _bind_call_context(ctx, "epl_gesuchseingaenge")
     try:
-        info = {
-            "beschreibung": (
+        envelope = GesuchseingaengeEnvelope(
+            source="BAG Spezialitaetenliste (SL)",
+            provenance=_provenance("BAG Spezialitaetenliste (SL)", SL_BASE_URL),
+            beschreibung=(
                 "Die Gesuchseingaenge zeigen, welche Arzneimittel aktuell zur Aufnahme "
                 "in die Spezialitaetenliste beantragt wurden. Diese Transparenzliste wird "
                 "periodisch vom BAG aktualisiert."
             ),
-            "link": f"{SL_BASE_URL}/#/applications",
-            "direkt_link_bag": f"{BAG_DOWNLOAD_URL}/Arzneimittel/gesuchseingaenge.html",
-            "hinweis": (
+            link=f"{SL_BASE_URL}/#/applications",
+            direkt_link_bag=f"{BAG_DOWNLOAD_URL}/Arzneimittel/gesuchseingaenge.html",
+            hinweis=(
                 "Die vollstaendige Liste der Gesuchseingaenge ist auf sl.bag.admin.ch einsehbar. "
                 "Die API-basierte Abfrage wird mit Phase 2 (FHIR) verfuegbar."
             ),
-        }
+        )
 
         md = "## Gesuchseingaenge Spezialitaetenliste\n\n"
-        md += f"> {info['beschreibung']}\n\n"
-        md += f"**SL-Portal:** [Gesuchseingaenge ansehen]({info['link']})\n\n"
-        md += f"**BAG-Seite:** [Offizielle BAG-Seite]({info['direkt_link_bag']})\n\n"
-        md += f"**Hinweis:** {info['hinweis']}\n"
+        md += f"> {envelope.beschreibung}\n\n"
+        md += f"**SL-Portal:** [Gesuchseingaenge ansehen]({envelope.link})\n\n"
+        md += f"**BAG-Seite:** [Offizielle BAG-Seite]({envelope.direkt_link_bag})\n\n"
+        md += f"**Hinweis:** {envelope.hinweis}\n"
         md += f"\n---\n*Quelle: BAG Spezialitaetenliste · Lizenz: {OGD_LICENSE} · {SL_BASE_URL}*\n"
-        return md
+        return _structured_result(md, envelope)
 
     except ToolError:
         raise
@@ -616,8 +714,8 @@ async def epl_gesuchseingaenge(ctx: Context | None = None) -> str:
         raise ToolError(_handle_error(e, "Gesuchseingaenge")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-async def epl_rechtskontext(eingabe: RechtskontextInput, ctx: Context | None = None) -> str:
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), structured_output=True)
+async def epl_rechtskontext(eingabe: RechtskontextInput, ctx: Context | None = None) -> RechtskontextEnvelope:
     """
     Rechtlichen Kontext zur Kassenpflicht liefern.
 
@@ -631,67 +729,66 @@ async def epl_rechtskontext(eingabe: RechtskontextInput, ctx: Context | None = N
     """
     _bind_call_context(ctx, "epl_rechtskontext")
     try:
-        rechtsrahmen = {
-            "frage": eingabe.frage,
-            "gesetze": [
-                {
-                    "kuerzel": "KVG",
-                    "titel": "Bundesgesetz ueber die Krankenversicherung",
-                    "sr_nummer": "SR 832.10",
-                    "fedlex": "https://www.fedlex.admin.ch/eli/cc/1995/1328_1328_1328/de",
-                    "relevante_artikel": ["Art. 25 (Leistungen)", "Art. 32 (WZW)", "Art. 52 (SL)"],
-                },
-                {
-                    "kuerzel": "KLV",
-                    "titel": "Krankenpflege-Leistungsverordnung",
-                    "sr_nummer": "SR 832.112.31",
-                    "fedlex": "https://www.fedlex.admin.ch/eli/cc/1995/4964_4964_4964/de",
-                    "relevante_artikel": ["Art. 20 (MiGeL)", "Art. 30ff (SL-Aufnahme)"],
-                },
-                {
-                    "kuerzel": "IVG",
-                    "titel": "Bundesgesetz ueber die Invalidenversicherung",
-                    "sr_nummer": "SR 831.20",
-                    "fedlex": "https://www.fedlex.admin.ch/eli/cc/1959/827_857_845/de",
-                    "relevante_artikel": ["Art. 13 (Geburtsgebrechen)"],
-                },
-                {
-                    "kuerzel": "GgV",
-                    "titel": "Verordnung ueber Geburtsgebrechen",
-                    "sr_nummer": "SR 831.232.21",
-                    "fedlex": "https://www.fedlex.admin.ch/eli/cc/1986/40_40_40/de",
-                    "relevante_artikel": ["Anhang (Liste der Geburtsgebrechen)"],
-                },
+        envelope = RechtskontextEnvelope(
+            source="Fedlex (Bundesrecht)",
+            provenance=_provenance("Fedlex (Bundesrecht)", "https://www.fedlex.admin.ch"),
+            frage=eingabe.frage,
+            gesetze=[
+                Gesetz(
+                    kuerzel="KVG",
+                    titel="Bundesgesetz ueber die Krankenversicherung",
+                    sr_nummer="SR 832.10",
+                    fedlex="https://www.fedlex.admin.ch/eli/cc/1995/1328_1328_1328/de",
+                    relevante_artikel=["Art. 25 (Leistungen)", "Art. 32 (WZW)", "Art. 52 (SL)"],
+                ),
+                Gesetz(
+                    kuerzel="KLV",
+                    titel="Krankenpflege-Leistungsverordnung",
+                    sr_nummer="SR 832.112.31",
+                    fedlex="https://www.fedlex.admin.ch/eli/cc/1995/4964_4964_4964/de",
+                    relevante_artikel=["Art. 20 (MiGeL)", "Art. 30ff (SL-Aufnahme)"],
+                ),
+                Gesetz(
+                    kuerzel="IVG",
+                    titel="Bundesgesetz ueber die Invalidenversicherung",
+                    sr_nummer="SR 831.20",
+                    fedlex="https://www.fedlex.admin.ch/eli/cc/1959/827_857_845/de",
+                    relevante_artikel=["Art. 13 (Geburtsgebrechen)"],
+                ),
+                Gesetz(
+                    kuerzel="GgV",
+                    titel="Verordnung ueber Geburtsgebrechen",
+                    sr_nummer="SR 831.232.21",
+                    fedlex="https://www.fedlex.admin.ch/eli/cc/1986/40_40_40/de",
+                    relevante_artikel=["Anhang (Liste der Geburtsgebrechen)"],
+                ),
             ],
-            "wzw_kriterien": {
+            wzw_kriterien={
                 "wirksamkeit": "Das Arzneimittel muss wirksam sein (klinische Studien).",
                 "zweckmaessigkeit": "Der Einsatz muss zweckmaessig sein (Nutzen-Risiko).",
                 "wirtschaftlichkeit": "Die Kosten muessen in einem angemessenen Verhaeltnis stehen.",
             },
-            "hinweis": "Fuer verbindliche Rechtsauskunft konsultieren Sie die offiziellen Fedlex-Quellen.",
-        }
+            hinweis="Fuer verbindliche Rechtsauskunft konsultieren Sie die offiziellen Fedlex-Quellen.",
+        )
 
         if eingabe.format == ResponseFormat.JSON:
-            rechtsrahmen["source"] = "Fedlex (Bundesrecht)"
-            rechtsrahmen["provenance"] = _provenance(
-                "Fedlex (Bundesrecht)", "https://www.fedlex.admin.ch"
-            )
-            return json.dumps(rechtsrahmen, ensure_ascii=False, indent=2)
+            text = json.dumps(envelope.model_dump(mode="json"), ensure_ascii=False, indent=2)
+            return _structured_result(text, envelope)
 
         md = f"## Rechtskontext: {eingabe.frage}\n\n"
         md += "### Relevante Gesetze\n\n"
-        for g in rechtsrahmen["gesetze"]:
-            md += f"#### {g['kuerzel']} \u2014 {g['titel']}\n"
-            md += f"- **SR-Nummer:** {g['sr_nummer']}\n"
-            md += f"- **Fedlex:** [{g['kuerzel']} auf Fedlex]({g['fedlex']})\n"
-            md += f"- **Relevante Artikel:** {', '.join(g['relevante_artikel'])}\n\n"
+        for g in envelope.gesetze:
+            md += f"#### {g.kuerzel} \u2014 {g.titel}\n"
+            md += f"- **SR-Nummer:** {g.sr_nummer}\n"
+            md += f"- **Fedlex:** [{g.kuerzel} auf Fedlex]({g.fedlex})\n"
+            md += f"- **Relevante Artikel:** {', '.join(g.relevante_artikel)}\n\n"
 
         md += "### WZW-Kriterien (KVG Art. 32)\n\n"
-        for k, v in rechtsrahmen["wzw_kriterien"].items():
+        for k, v in envelope.wzw_kriterien.items():
             md += f"- **{k.capitalize()}:** {v}\n"
 
-        md += f"\n> **Hinweis:** {rechtsrahmen['hinweis']}\n"
-        return md
+        md += f"\n> **Hinweis:** {envelope.hinweis}\n"
+        return _structured_result(md, envelope)
 
     except ToolError:
         raise
@@ -699,8 +796,8 @@ async def epl_rechtskontext(eingabe: RechtskontextInput, ctx: Context | None = N
         raise ToolError(_handle_error(e, "Rechtskontext")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
-async def epl_server_info(ctx: Context | None = None) -> str:
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), structured_output=True)
+async def epl_server_info(ctx: Context | None = None) -> ServerInfoEnvelope:
     """
     Serverstatus und API-Phaseninformation anzeigen.
 
@@ -712,13 +809,15 @@ async def epl_server_info(ctx: Context | None = None) -> str:
     Roadmap-Stands.</use_case>
     """
     _bind_call_context(ctx, "epl_server_info")
-    info = {
-        "server": "bag-epl-mcp",
-        "version": "0.1.0",
-        "protocol_version": PROTOCOL_VERSION,
-        "license": OGD_LICENSE,
-        "phase": "Phase 1 \u2014 XML/XLSX-Downloads + SL-Website-Zugriff",
-        "tools": {
+    envelope = ServerInfoEnvelope(
+        source="bag-epl-mcp",
+        provenance=_provenance("bag-epl-mcp", "https://github.com/malkreide/bag-epl-mcp"),
+        server="bag-epl-mcp",
+        version="0.1.0",
+        protocol_version=PROTOCOL_VERSION,
+        license=OGD_LICENSE,
+        phase="Phase 1 \u2014 XML/XLSX-Downloads + SL-Website-Zugriff",
+        tools={
             "epl_sl_suche": "Medikamentensuche in der Spezialitaetenliste (SL)",
             "epl_ggsl_abfrage": "GGSL-Deckung bei Geburtsgebrechen pruefen",
             "epl_migel_suche": "Medizinprodukte in der MiGeL suchen",
@@ -726,29 +825,29 @@ async def epl_server_info(ctx: Context | None = None) -> str:
             "epl_rechtskontext": "Rechtliche Grundlagen zur Kassenpflicht",
             "epl_server_info": "Serverstatus (dieses Tool)",
         },
-        "phasen": {
+        phasen={
             "phase_1": "XML/XLSX-Downloads + SL-Website (aktuell)",
             "phase_2": "FHIR/IDMP-API des BAG (~2025/2026)",
             "phase_3": "MiGeL + AL via ePL-FHIR (2026/2027)",
         },
-        "datenquellen": {
+        datenquellen={
             "sl": f"{SL_BASE_URL} \u2014 Spezialitaetenliste",
             "ggsl": GGSL_INFO_URL,
             "migel": MIGEL_INFO_URL,
         },
-    }
+    )
 
     md = "## BAG ePL MCP Server \u2014 Status\n\n"
-    md += f"**Version:** {info['version']}\n\n"
-    md += f"**MCP-Protokoll:** {info['protocol_version']}\n\n"
-    md += f"**Aktuelle Phase:** {info['phase']}\n\n"
+    md += f"**Version:** {envelope.version}\n\n"
+    md += f"**MCP-Protokoll:** {envelope.protocol_version}\n\n"
+    md += f"**Aktuelle Phase:** {envelope.phase}\n\n"
     md += "### Verfuegbare Tools\n\n"
-    for tool, desc in info["tools"].items():
+    for tool, desc in envelope.tools.items():
         md += f"| `{tool}` | {desc} |\n"
     md += "\n### Phasenplan\n\n"
-    for phase, desc in info["phasen"].items():
+    for phase, desc in envelope.phasen.items():
         md += f"- **{phase}:** {desc}\n"
-    return md
+    return _structured_result(md, envelope)
 
 
 # ─────────────────────────── Resources ─────────────────────────────────────────
@@ -850,13 +949,18 @@ def _build_http_app():
 
 def _init_otel(app) -> None:
     """
-    OBS-006: optionales OpenTelemetry-Tracing (opt-in via ``MCP_OTEL_ENABLED=1``).
+    OBS-006: OpenTelemetry-Tracing, standardmaessig aktiv (mit ``MCP_OTEL_ENABLED=0``
+    abschaltbar).
 
     Auto-Instrumentierung der ASGI-App und des HTTP-Clients erzeugt Spans pro
     Request bzw. ausgehendem Backend-Call. Exporter/Endpoint werden ueber die
     Standard-``OTEL_*``-Umgebungsvariablen konfiguriert. Keine sensiblen Daten
     (PII/Credentials) in Span-Attributen — die Auto-Instrumentierung loggt nur
     Methode/Status/URL.
+
+    Ist das ``[otel]``-Extra nicht installiert, ist dies ein stiller No-op
+    (Base-Installs bleiben unveraendert), damit „aktiv per Default" nicht zur
+    harten Abhaengigkeit wird.
     """
     try:
         from opentelemetry import trace
@@ -867,7 +971,7 @@ def _init_otel(app) -> None:
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
     except ImportError:
-        log.warning("otel_unavailable", hint="install the '[otel]' extra")
+        log.debug("otel_unavailable", hint="install the '[otel]' extra to enable tracing")
         return
     # TracerProvider + OTLP-Exporter; Endpoint via OTEL_EXPORTER_OTLP_ENDPOINT.
     provider = TracerProvider(resource=Resource.create({"service.name": "bag-epl-mcp"}))

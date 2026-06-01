@@ -3,13 +3,13 @@
 > Re-audit with the [mcp-audit-skill](https://github.com/malkreide/mcp-audit-skill) (v1.0.0, 68-check catalog) after Phase 1–3 remediation (PRs #2, #3, #4).
 > Baseline: [`../2026-06-01/AUDIT-REPORT.md`](../2026-06-01/AUDIT-REPORT.md). All numbers derive from [`summary.json`](./summary.json).
 >
-> **Follow-up (same day):** a post-re-audit remediation closed **SDK-003**, **OBS-003** and **SEC-005** (DNS-pinning), fully wired **OBS-006**, and added a sticky-session config for SCALE-002/003 — see §9. The headline figures below reflect that follow-up: **37 pass / 7 partial / 0 fail**.
+> **Follow-up (same day):** a post-re-audit remediation closed **SDK-003**, **OBS-003**, **SEC-005** (DNS-pinning), **SDK-002** (typed output schemas + structuredContent) and **OBS-006** (tracing on by default), and added a sticky-session config for SCALE-002/003 — see §9. The headline figures below reflect that follow-up: **39 pass / 5 partial / 0 fail**.
 
 ---
 
 ## 1. Executive Summary
 
-After three remediation phases plus a same-day follow-up, the server moved from **11 pass / 26 partial / 7 fail** to **37 pass / 7 partial / 0 fail** across the 44 applicable checks. **All 7 failed checks and 19 partials were resolved**, including the advertised-but-unimplemented cloud transport (the baseline's headline defect) and 3 of the 4 critical items.
+After three remediation phases plus a same-day follow-up, the server moved from **11 pass / 26 partial / 7 fail** to **39 pass / 5 partial / 0 fail** across the 44 applicable checks. **All 7 failed checks and 21 partials were resolved**, including the advertised-but-unimplemented cloud transport (the baseline's headline defect) and 3 of the 4 critical items.
 
 **Production-readiness: `true`** for the documented **Phase-1, single-instance** deployment. There are **no failed checks** and no unaddressed criticals. The single remaining critical (SEC-009) is a **documented accepted-risk** (no authentication, public read-only data). The other 9 partials are either documented accepted-risk or deferred to Phase 2 / multi-instance scaling — none block a Phase-1 release.
 
@@ -19,16 +19,16 @@ After three remediation phases plus a same-day follow-up, the server moved from 
 
 | Status | Baseline (2026-06-01) | Re-audit (incl. follow-up) | Δ |
 |--------|:---:|:---:|:---:|
-| Pass | 11 | **37** | **+26** |
-| Partial | 26 | **7** | **−19** |
+| Pass | 11 | **39** | **+28** |
+| Partial | 26 | **5** | **−21** |
 | Fail | 7 | **0** | **−7** |
-| Findings (partial+fail) | 33 | **7** | **−26** |
+| Findings (partial+fail) | 33 | **5** | **−28** |
 
 | Findings by severity | Baseline | Re-audit |
 |---|:---:|:---:|
 | Critical | 4 | **1** (accepted-risk) |
 | High | 16 | **2** (deferred multi-instance) |
-| Medium | 13 | **4** |
+| Medium | 13 | **2** (accepted-risk) |
 | Low | 0 | 0 |
 
 Profile unchanged: dual transport · no auth · Public Open Data · read-only · Render + local-stdio.
@@ -65,19 +65,17 @@ Profile unchanged: dual transport · no auth · Public Open Data · read-only ·
 
 ---
 
-## 4. Remaining Findings (7) — none blocking Phase 1
+## 4. Remaining Findings (5) — none blocking Phase 1
 
 | ID | Sev | Status | Disposition | Note |
 |----|----|--------|-------------|------|
 | SEC-009 | critical | partial | **accepted-risk** | No auth → no session binding by design (public read-only, single instance). Documented in `docs/SECURITY.md §3`. Re-introduce signed binding if auth is ever added. |
 | SCALE-002 | high | partial | **deferred (multi-instance)** | Sticky sessions only needed when scaled; reference config in `deploy/haproxy.cfg`, full pass needs a real multi-instance failover test. |
 | SCALE-003 | high | partial | **deferred (multi-instance)** | Edge-LB session routing only for >1 replica; `deploy/haproxy.cfg` documents the routing + TTL. |
-| SDK-002 | medium | partial | **by-design** | Consistent JSON envelope added; return annotation kept `str` to preserve Markdown UX. |
 | SEC-014 | medium | partial | accepted-risk | No gateway allow-list; documented (single public read-only server). |
 | SEC-015 | medium | partial | accepted-risk | No pre-flight tool-poisoning detection; static own tools. |
-| OBS-006 | medium | partial | opt-in | OTel fully wired (TracerProvider + OTLP + auto-instrumentation) but off by default; see §9. |
 
-> **SDK-003**, **OBS-003** and **SEC-005** were closed in a same-day follow-up (§9).
+> **SDK-003**, **OBS-003**, **SEC-005**, **SDK-002** and **OBS-006** were closed in a same-day follow-up (§9).
 
 **Recommended next steps (optional, non-blocking):** implement DNS-pinning (SEC-005) and `ctx`-based per-call logging (SDK-003 + OBS-003) in a small follow-up; address SCALE-002/003 only when moving to multi-instance; configure OTel at deploy time if tracing is desired.
 
@@ -124,10 +122,11 @@ After the re-audit, the cleanly-fixable open items were addressed in a follow-up
 | SDK-003 | medium | partial → **pass** | `ctx: Context` injected into all 6 tools; per-call context bound to the structured logger. |
 | OBS-003 | medium | partial → **pass** | Per-tool-call bound logging context (`tool`, `correlation_id`, `request_id`/`client_id` when a session is active). |
 | SEC-005 | high | partial → **pass** | DNS-pinned transport (`_PinnedNetworkBackend`): single resolution, IP pinned for the TCP connection, TLS/cert still validated against the hostname. Verified end-to-end against a real host. |
-| OBS-006 | medium | partial → **partial (wired)** | `_init_otel` now configures a real `TracerProvider` + OTLP exporter (+ Starlette/httpx auto-instrumentation). Still opt-in via `[otel]` + `MCP_OTEL_ENABLED`. |
+| SDK-002 | medium | partial → **pass** | All 6 tools now declare typed Pydantic output schemas and return `structuredContent` **plus** the curated Markdown in `content` (hybrid via `CallToolResult` — no UX loss). |
+| OBS-006 | medium | partial → **pass** | OpenTelemetry on by default (`MCP_OTEL_ENABLED=0` to disable); silent no-op when the `[otel]` extra isn't installed, so base installs are unaffected and stdout stays clean. |
 | SCALE-002/003 | high | partial (improved) | Reference HAProxy sticky-session config (`deploy/haproxy.cfg`); full pass needs a real multi-instance failover test. |
 
-**Updated totals: 37 pass / 7 partial / 0 fail.** Remaining 7 partials: SEC-009 (critical, accepted-risk), SCALE-002 / SCALE-003 (high, deferred — multi-instance), SDK-002 (by-design), SEC-014 / SEC-015 (accepted-risk), OBS-006 (opt-in). None block a Phase-1 release.
+**Updated totals: 39 pass / 5 partial / 0 fail.** Remaining 5 partials: SEC-009 (critical, accepted-risk), SCALE-002 / SCALE-003 (high, deferred — multi-instance), SEC-014 / SEC-015 (medium, accepted-risk). None block a Phase-1 release.
 
 ## 8. Sign-Off
 

@@ -48,6 +48,16 @@ def _fake_getaddrinfo(ip: str):
     return _inner
 
 
+def _text(result):
+    """Menschenlesbarer content-Block einer Tool-Antwort (SDK-002 CallToolResult)."""
+    return result.content[0].text
+
+
+def _struct(result):
+    """structuredContent einer Tool-Antwort (SDK-002)."""
+    return result.structuredContent
+
+
 # ─────────────────────────── Hilfsfunktionen ───────────────────────────────────
 
 class TestPaginateHelper:
@@ -158,17 +168,22 @@ class TestSLSucheMocked:
     async def test_sl_suche_tool_markdown(self):
         respx.get(f"{SL_API_URL}/search").mock(side_effect=httpx.ConnectError("no api"))
         result = await epl_sl_suche(SLSucheInput(suchbegriff="Methylphenidat"))
-        assert "SL-Suche" in result and "Methylphenidat" in result
+        text = _text(result)
+        assert "SL-Suche" in text and "Methylphenidat" in text
         # CH-004: Quelle/Lizenz im Markdown-Footer
-        assert OGD_LICENSE in result and "sl.bag.admin.ch" in result
+        assert OGD_LICENSE in text and "sl.bag.admin.ch" in text
+        # SDK-002: getyptes structuredContent immer mitgeliefert
+        assert _struct(result)["match_type"] == "none"
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_sl_suche_tool_json_envelope(self):
         respx.get(f"{SL_API_URL}/search").mock(side_effect=httpx.ConnectError("no api"))
         result = await epl_sl_suche(SLSucheInput(suchbegriff="Aspirin", format=ResponseFormat.JSON))
-        data = json.loads(result)
-        # SDK-002 Envelope + ARCH-003 match_type + CH-004 provenance/license
+        # SDK-002: content-Text ist JSON, structuredContent das getypte Envelope
+        data = json.loads(_text(result))
+        assert data == _struct(result)
+        # ARCH-003 match_type + CH-004 provenance/license
         assert data["match_type"] == "none"
         assert data["count"] == 0 and data["results"] == []
         assert data["provenance"]["license"] == OGD_LICENSE
@@ -183,8 +198,9 @@ class TestSLSucheMocked:
         result = await _sl_website_suche("Aspirin")
         assert result["results"][0]["name"] == "Aspirin Cardio"
         # Tool klassifiziert echte Treffer als "exact"
-        tool_json = await epl_sl_suche(SLSucheInput(suchbegriff="Aspirin", format=ResponseFormat.JSON))
-        assert json.loads(tool_json)["match_type"] == "exact"
+        tool = await epl_sl_suche(SLSucheInput(suchbegriff="Aspirin", format=ResponseFormat.JSON))
+        assert _struct(tool)["match_type"] == "exact"
+        assert _struct(tool)["results"][0]["name"] == "Aspirin Cardio"
 
 
 # ─────────────────────────── GGSL / MiGeL / Gesuche / Recht ────────────────────
@@ -193,12 +209,15 @@ class TestGGSL:
     @pytest.mark.asyncio
     async def test_ggsl_markdown(self):
         result = await epl_ggsl_abfrage(GGSLAbfrageInput(geburtsgebrechen_nr="313"))
-        assert "313" in result and "IVG" in result and OGD_LICENSE in result
+        text = _text(result)
+        assert "313" in text and "IVG" in text and OGD_LICENSE in text
+        assert _struct(result)["geburtsgebrechen_nr"] == "313"
 
     @pytest.mark.asyncio
     async def test_ggsl_json(self):
         result = await epl_ggsl_abfrage(GGSLAbfrageInput(geburtsgebrechen_nr="404", format=ResponseFormat.JSON))
-        data = json.loads(result)
+        data = json.loads(_text(result))
+        assert data == _struct(result)
         assert data["geburtsgebrechen_nr"] == "404" and "rechtsgrundlage" in data
         assert data["provenance"]["license"] == OGD_LICENSE
 
@@ -207,12 +226,15 @@ class TestMiGeL:
     @pytest.mark.asyncio
     async def test_migel_markdown(self):
         result = await epl_migel_suche(MiGeLSucheInput(suchbegriff="Rollstuhl"))
-        assert "Rollstuhl" in result and "KLV" in result
+        text = _text(result)
+        assert "Rollstuhl" in text and "KLV" in text
+        assert _struct(result)["suchbegriff"] == "Rollstuhl"
 
     @pytest.mark.asyncio
     async def test_migel_json_envelope(self):
         result = await epl_migel_suche(MiGeLSucheInput(suchbegriff="Hoergeraet", format=ResponseFormat.JSON))
-        data = json.loads(result)
+        data = json.loads(_text(result))
+        assert data == _struct(result)
         assert data["suchbegriff"] == "Hoergeraet"
         assert data["match_type"] == "none" and data["results"] == []
         assert data["provenance"]["source"] == "BAG MiGeL"
@@ -222,19 +244,23 @@ class TestGesuchseingaenge:
     @pytest.mark.asyncio
     async def test_gesuchseingaenge(self):
         result = await epl_gesuchseingaenge()
-        assert "Gesuchseingaenge" in result and "sl.bag.admin.ch" in result
+        assert "Gesuchseingaenge" in _text(result) and "sl.bag.admin.ch" in _text(result)
+        assert _struct(result)["link"].startswith("https://sl.bag.admin.ch")
 
 
 class TestRechtskontext:
     @pytest.mark.asyncio
     async def test_rechtskontext_markdown(self):
         result = await epl_rechtskontext(RechtskontextInput(frage="Welche Gesetze regeln die SL?"))
-        assert "KVG" in result and "KLV" in result and "WZW" in result
+        text = _text(result)
+        assert "KVG" in text and "KLV" in text and "WZW" in text
+        assert len(_struct(result)["gesetze"]) >= 3
 
     @pytest.mark.asyncio
     async def test_rechtskontext_json(self):
         result = await epl_rechtskontext(RechtskontextInput(frage="Rechtsgrundlage SL", format=ResponseFormat.JSON))
-        data = json.loads(result)
+        data = json.loads(_text(result))
+        assert data == _struct(result)
         assert len(data["gesetze"]) >= 3 and "wzw_kriterien" in data
         assert "provenance" in data
 
@@ -243,9 +269,13 @@ class TestServerInfo:
     @pytest.mark.asyncio
     async def test_server_info(self):
         result = await epl_server_info()
-        assert "BAG ePL MCP Server" in result and "Phase 1" in result
+        text = _text(result)
+        assert "BAG ePL MCP Server" in text and "Phase 1" in text
         # ARCH-012: Protokoll-Version dokumentiert
-        assert PROTOCOL_VERSION in result
+        assert PROTOCOL_VERSION in text
+        # SDK-002: getyptes structuredContent
+        assert _struct(result)["protocol_version"] == PROTOCOL_VERSION
+        assert "epl_sl_suche" in _struct(result)["tools"]
 
 
 # ─────────────────────────── Egress-Guard (SEC-004/005/021) ───────────────────
@@ -339,7 +369,12 @@ class TestSettings:
     def test_defaults_sicher(self):
         s = ServerSettings()
         assert s.transport == "stdio" and s.host == "127.0.0.1"
-        assert s.otel_enabled is False
+        # OBS-006: Tracing standardmaessig aktiv (stiller No-op ohne [otel]-Extra).
+        assert s.otel_enabled is True
+
+    def test_otel_abschaltbar(self, monkeypatch):
+        monkeypatch.setenv("MCP_OTEL_ENABLED", "false")
+        assert ServerSettings().otel_enabled is False
 
     def test_env_override(self, monkeypatch):
         monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
@@ -440,8 +475,15 @@ class TestObservability:
     @pytest.mark.asyncio
     async def test_tools_akzeptieren_ctx_injection(self):
         # FastMCP injiziert Context; defensiver Zugriff -> kein Crash.
+        from mcp.types import CallToolResult
         res = await mcp.call_tool("epl_server_info", {})
-        text = res[0][0].text if isinstance(res, tuple) else res[0].text
+        if isinstance(res, CallToolResult):          # SDK-002: content + structuredContent
+            text = res.content[0].text
+            assert res.structuredContent["protocol_version"] == PROTOCOL_VERSION
+        elif isinstance(res, tuple):
+            text = res[0][0].text
+        else:
+            text = res[0].text
         assert "BAG ePL MCP Server" in text
 
     def test_alle_tools_haben_ctx_param(self):
