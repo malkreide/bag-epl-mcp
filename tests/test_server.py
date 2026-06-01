@@ -421,6 +421,74 @@ class TestToolAnnotations:
         assert tools["epl_server_info"].annotations.openWorldHint is False
 
 
+# ─────────────────────────── Lifespan / HTTP-Client-Pool (SDK-001) ─────────────
+
+class TestLifespan:
+    """Tests fuer den gepoolten HTTP-Client im Lifespan."""
+
+    @pytest.mark.asyncio
+    async def test_lifespan_oeffnet_und_schliesst_client(self):
+        import bag_epl_mcp.server as srv
+
+        assert srv._http_client is None
+        async with srv._lifespan(srv.mcp) as ctx:
+            assert isinstance(srv._http_client, httpx.AsyncClient)
+            assert ctx["http_client"] is srv._http_client
+            assert srv._http_client.is_closed is False
+        # nach Verlassen des Kontexts: geschlossen und zurueckgesetzt
+        assert srv._http_client is None
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_http_get_nutzt_pool_client(self):
+        import bag_epl_mcp.server as srv
+
+        respx.get(f"{SL_API_URL}/search").mock(
+            return_value=httpx.Response(200, json={"results": []})
+        )
+        async with srv._lifespan(srv.mcp):
+            pooled = srv._http_client
+            await srv._http_get(f"{SL_API_URL}/search")
+            # derselbe Pool-Client wird wiederverwendet (kein Neu-Erzeugen)
+            assert srv._http_client is pooled
+
+
+# ─────────────────────────── HTTP-App / Health (SCALE-004/SDK-004) ─────────────
+
+class TestHttpApp:
+    """Tests fuer die Cloud-HTTP-App (Health-Endpoint + CORS)."""
+
+    # Modul-/Klassen-weit eine App: der StreamableHTTP-Session-Manager darf nur
+    # einmal pro Instanz gestartet werden, daher ein gemeinsamer TestClient.
+    @pytest.fixture(scope="class")
+    def client(self):
+        from starlette.testclient import TestClient
+
+        from bag_epl_mcp.server import _build_http_app
+
+        with TestClient(_build_http_app()) as c:
+            yield c
+
+    def test_healthz_endpoint(self, client):
+        resp = client.get("/healthz")
+        assert resp.status_code == 200
+        assert resp.text == "ok"
+
+    def test_cors_preflight_exposes_session_id(self, client):
+        resp = client.options(
+            "/mcp",
+            headers={
+                "Origin": "https://claude.ai",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "mcp-session-id",
+            },
+        )
+        assert resp.headers.get("access-control-allow-origin") == "https://claude.ai"
+        assert "mcp-session-id" in resp.headers.get(
+            "access-control-allow-headers", ""
+        ).lower()
+
+
 # ─────────────────────────── Live-Tests (opt-in) ──────────────────────────────
 
 @pytest.mark.live
