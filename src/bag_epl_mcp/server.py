@@ -23,6 +23,7 @@ from enum import StrEnum
 from typing import Literal
 from urllib.parse import urlsplit
 
+import httpcore
 import httpx
 import structlog
 from mcp.server.fastmcp import Context, FastMCP
@@ -101,7 +102,7 @@ _http_client: httpx.AsyncClient | None = None
 async def _lifespan(_server: FastMCP) -> AsyncIterator[dict]:
     """Initialisiert den gepoolten HTTP-Client und raeumt ihn beim Shutdown ab."""
     global _http_client
-    _http_client = httpx.AsyncClient(timeout=HTTP_TIMEOUT)
+    _http_client = _new_http_client()
     log.info("server_startup", transport=settings.transport)
     try:
         yield {"http_client": _http_client}
@@ -165,15 +166,13 @@ ALLOWED_HOSTS: frozenset[str] = frozenset({
 
 def _assert_safe_url(url: str) -> None:
     """
-    Validiert eine Ziel-URL vor jedem ausgehenden Request.
+    Schnelle Vorpruefung vor jedem ausgehenden Request (ohne DNS):
 
-    Schutz gegen SSRF (SEC-004), DNS-Rebinding-Restrisiko (SEC-005) und
-    erzwingt die Egress-Allow-List (SEC-021):
+    * Schema muss ``https`` sein (SEC-004).
+    * Host muss in :data:`ALLOWED_HOSTS` stehen — Default-Deny (SEC-021).
 
-    * Schema muss ``https`` sein.
-    * Host muss in :data:`ALLOWED_HOSTS` stehen (Default-Deny).
-    * Aufgeloeste IP-Adressen duerfen nicht privat/loopback/link-local sein
-      (blockt u.a. 169.254.169.254, ::1, fe80::/10).
+    Die DNS-Aufloesung + IP-Validierung + das Pinning erfolgen in
+    :func:`_resolve_and_validate` bzw. :class:`_PinnedNetworkBackend` (SEC-005).
     """
     parts = urlsplit(url)
     if parts.scheme != "https":
@@ -184,8 +183,15 @@ def _assert_safe_url(url: str) -> None:
         log.warning("egress_blocked", reason="host_not_allowed", host=host)
         raise ToolError("Ziel-Host ist nicht in der erlaubten Egress-Liste.")
 
+
+def _resolve_and_validate(host: str, port: int) -> str:
+    """
+    Loest ``host`` **genau einmal** auf, validiert alle zurueckgegebenen IPs gegen
+    die SSRF-Blocklist (privat/loopback/link-local/reserved, u.a. 169.254.169.254,
+    ::1, fe80::/10) und gibt die zu verwendende (gepinnte) IP zurueck (SEC-004/005).
+    """
     try:
-        infos = socket.getaddrinfo(host, parts.port or 443, proto=socket.IPPROTO_TCP)
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
     except OSError as exc:
         raise ToolError("Host-Aufloesung fehlgeschlagen.") from exc
 
@@ -194,6 +200,48 @@ def _assert_safe_url(url: str) -> None:
         if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
             log.warning("egress_blocked", reason="unsafe_ip", host=host, ip=str(ip))
             raise ToolError("Aufgeloeste IP-Adresse ist nicht erlaubt (SSRF-Schutz).")
+    return infos[0][4][0]
+
+
+class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
+    """
+    SEC-005 (DNS-Rebinding-Prevention): loest den Hostnamen einmal auf, validiert
+    die IP und pinnt die TCP-Verbindung auf genau diese IP. TLS-SNI und
+    Zertifikatspruefung verwenden weiterhin den urspruenglichen Hostnamen, da
+    httpcore ``start_tls`` separat mit dem Origin-Host aufruft.
+    """
+
+    def __init__(self, inner: httpcore.AsyncNetworkBackend) -> None:
+        self._inner = inner
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        pinned_ip = _resolve_and_validate(host, port)
+        return await self._inner.connect_tcp(
+            pinned_ip, port, timeout=timeout,
+            local_address=local_address, socket_options=socket_options,
+        )
+
+    async def connect_unix_socket(self, *args, **kwargs):  # pragma: no cover - unused
+        return await self._inner.connect_unix_socket(*args, **kwargs)
+
+    async def sleep(self, seconds: float) -> None:
+        await self._inner.sleep(seconds)
+
+
+def _new_http_client() -> httpx.AsyncClient:
+    """
+    Erzeugt einen AsyncClient, dessen Verbindungen DNS-gepinnt und SSRF-validiert
+    sind (SEC-004/005). Faellt defensiv auf einen ungepinnten Client zurueck, falls
+    sich die httpx-Internas aendern — die Allow-List (SEC-021) bleibt aktiv.
+    """
+    transport = httpx.AsyncHTTPTransport()
+    pool = getattr(transport, "_pool", None)
+    backend = getattr(pool, "_network_backend", None)
+    if backend is not None:
+        pool._network_backend = _PinnedNetworkBackend(backend)
+    else:  # pragma: no cover - defensive
+        log.warning("dns_pinning_unavailable")
+    return httpx.AsyncClient(timeout=HTTP_TIMEOUT, transport=transport)
 
 # ─────────────────────────── Enum ──────────────────────────────────────────────
 class ResponseFormat(StrEnum):
@@ -214,7 +262,7 @@ async def _http_get(url: str, params: dict | None = None) -> httpx.Response:
     if _http_client is not None:
         return await _http_client.get(url, params=params)
     # Fallback (z.B. Direktaufruf ausserhalb des Server-Lifespans / Tests).
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+    async with _new_http_client() as client:
         return await client.get(url, params=params)
 
 

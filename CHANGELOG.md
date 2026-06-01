@@ -47,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   context (`tool`, `correlation_id`, `request_id`/`client_id`) — SDK-003 / OBS-003.
 - OpenTelemetry now configures a real `TracerProvider` + OTLP exporter when
   enabled (`[otel]` extra, `MCP_OTEL_ENABLED`) — OBS-006.
+- **DNS-pinned HTTP transport** (`_PinnedNetworkBackend`): the host is resolved
+  exactly once, the resolved IP is validated and the TCP connection pinned to it,
+  while TLS SNI/cert verification still use the hostname — eliminates the
+  resolve/connect TOCTOU (SEC-005).
+- `deploy/haproxy.cfg`: reference sticky-session (Mcp-Session-Id stick-table +
+  TTL) config for the horizontal-scaling path (SCALE-002/003).
 
 ### Changed
 - Console entrypoint is now `bag_epl_mcp.server:main` (transport-aware).
@@ -64,8 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SEC-016, SEC-019, SEC-009, OBS-001/002 (Phase 1); SEC-007, SCALE-004,
   SCALE-006, SDK-001, OBS-003 (Phase 2); and SEC-018, SEC-022, ARCH-002,
   ARCH-012, SDK-002, ARCH-003, CH-004, OBS-006, OPS-001/002/003 (Phase 3);
-  and SDK-003, OBS-003 (post-re-audit follow-up). See `docs/audit/2026-06-01/`
-  and `docs/audit/2026-06-01-reaudit/`.
+  and SDK-003, OBS-003, SEC-005 (post-re-audit follow-up). See
+  `docs/audit/2026-06-01/` and `docs/audit/2026-06-01-reaudit/`.
 
 ## [0.1.0] - 2026-04-13
 

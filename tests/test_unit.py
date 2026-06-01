@@ -263,14 +263,21 @@ class TestEgressGuard:
             _assert_safe_url("https://evil.example.com/steal")
 
     def test_private_ip_abgelehnt(self, monkeypatch):
+        from bag_epl_mcp.server import _resolve_and_validate
         monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("127.0.0.1"))
         with pytest.raises(ToolError):
-            _assert_safe_url("https://sl.bag.admin.ch/api/search")
+            _resolve_and_validate("sl.bag.admin.ch", 443)
 
     def test_metadata_ip_abgelehnt(self, monkeypatch):
+        from bag_epl_mcp.server import _resolve_and_validate
         monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("169.254.169.254"))
         with pytest.raises(ToolError):
-            _assert_safe_url("https://www.bag.admin.ch/x")
+            _resolve_and_validate("www.bag.admin.ch", 443)
+
+    def test_resolve_and_validate_gibt_pinned_ip(self, monkeypatch):
+        from bag_epl_mcp.server import _resolve_and_validate
+        monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("93.184.216.34"))
+        assert _resolve_and_validate("sl.bag.admin.ch", 443) == "93.184.216.34"
 
     @pytest.mark.asyncio
     async def test_http_get_ruft_guard_auf(self):
@@ -280,6 +287,50 @@ class TestEgressGuard:
 
     def test_allowed_hosts_nur_admin_ch(self):
         assert all(h.endswith(".admin.ch") for h in ALLOWED_HOSTS)
+
+
+# ─────────────────────────── DNS-Pinning (SEC-005) ────────────────────────────
+
+class TestDnsPinning:
+    """Die TCP-Verbindung wird auf die validierte IP gepinnt (SEC-005)."""
+
+    @pytest.mark.asyncio
+    async def test_pinned_backend_waehlt_validierte_ip(self, monkeypatch):
+        from bag_epl_mcp.server import _PinnedNetworkBackend
+        monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("93.184.216.34"))
+        dialed = {}
+
+        class _Inner:
+            async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+                dialed["host"] = host
+                dialed["port"] = port
+                return object()
+
+        backend = _PinnedNetworkBackend(_Inner())
+        await backend.connect_tcp("sl.bag.admin.ch", 443)
+        # Es wird die aufgeloeste IP gewaehlt, nicht der Hostname.
+        assert dialed["host"] == "93.184.216.34" and dialed["port"] == 443
+
+    @pytest.mark.asyncio
+    async def test_pinned_backend_blockt_private_ip(self, monkeypatch):
+        from bag_epl_mcp.server import _PinnedNetworkBackend
+        monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("10.0.0.5"))
+
+        class _Inner:
+            async def connect_tcp(self, *a, **k):  # pragma: no cover - darf nicht erreicht werden
+                raise AssertionError("connect_tcp duerfte nicht aufgerufen werden")
+
+        with pytest.raises(ToolError):
+            await _PinnedNetworkBackend(_Inner()).connect_tcp("sl.bag.admin.ch", 443)
+
+    def test_new_http_client_ist_gepinnt(self):
+        from bag_epl_mcp.server import _new_http_client, _PinnedNetworkBackend
+        client = _new_http_client()
+        try:
+            backend = client._transport._pool._network_backend
+            assert isinstance(backend, _PinnedNetworkBackend)
+        finally:
+            pass
 
 
 # ─────────────────────────── Settings & Transport ─────────────────────────────
