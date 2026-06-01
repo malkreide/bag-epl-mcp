@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BAG ePL MCP Server — v0.1.0
+BAG ePL MCP Server — v0.2.0
 
 KI-nativer Zugang zur elektronischen Plattform Leistungen (ePL) des BAG:
   · Spezialitaetenliste (SL):   Kassenpflichtige Medikamente (KVG Art. 52)
@@ -813,7 +813,7 @@ async def epl_server_info(ctx: Context | None = None) -> ServerInfoEnvelope:
         source="bag-epl-mcp",
         provenance=_provenance("bag-epl-mcp", "https://github.com/malkreide/bag-epl-mcp"),
         server="bag-epl-mcp",
-        version="0.1.0",
+        version="0.2.0",
         protocol_version=PROTOCOL_VERSION,
         license=OGD_LICENSE,
         phase="Phase 1 \u2014 XML/XLSX-Downloads + SL-Website-Zugriff",
