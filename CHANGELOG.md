@@ -29,6 +29,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays reserved for the stdio JSON-RPC stream); full error detail is logged
   server-side while the model only sees a sanitized message.
 - `$PORT` fallback for `MCP_PORT` (PaaS/Render compatibility).
+- **Structured response envelope** for tool JSON output: `source`, `provenance`
+  (incl. `license`), `match_type`, `count`, `results` (SDK-002, ARCH-003).
+- **OGD-CH attribution** (CC BY 4.0) in every tool response — JSON `provenance`
+  block and Markdown source/licence footer (CH-004).
+- `<use_case>` tags in all tool docstrings (ARCH-002).
+- `protocolVersion` constant + update policy; surfaced via `epl_server_info`
+  (ARCH-012); `.github/dependabot.yml` for monthly pip / actions updates.
+- `docs/ROADMAP.md` with phase gates and sign-offs (OPS-003); data-flow
+  architecture diagram in both READMEs (OPS-002).
+- Optional OpenTelemetry tracing (`[otel]` extra, `MCP_OTEL_ENABLED`) — OBS-006.
+- `scripts/snapshot_tool_hashes.py` + release-workflow step recording SHA-256
+  hashes of tool definitions (SEC-022).
+- Tests split into `tests/test_unit.py` (mocked) and `tests/test_live.py`
+  (opt-in, one per tool) with a shared `conftest.py` (OPS-001).
 
 ### Changed
 - Console entrypoint is now `bag_epl_mcp.server:main` (transport-aware).
@@ -38,11 +52,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error path no longer echoes raw exception messages to the model.
 - Corrected README/README.de deployment instructions to the real
   env-var-based mechanism and the `/mcp` endpoint.
+- Input models now use Pydantic `strict=True` (the `format` field stays lenient
+  so clients may pass the string `"json"`/`"markdown"`) — SEC-018.
 
 ### Security
 - Addresses audit findings SCALE-001, ARCH-009, SDK-004, SEC-004/005/021,
-  SEC-016, SEC-019, SEC-009, OBS-001/002 (Phase 1) and SEC-007, SCALE-004,
-  SCALE-006, SDK-001, OBS-003 (Phase 2). See `docs/audit/2026-06-01/`.
+  SEC-016, SEC-019, SEC-009, OBS-001/002 (Phase 1); SEC-007, SCALE-004,
+  SCALE-006, SDK-001, OBS-003 (Phase 2); and SEC-018, SEC-022, ARCH-002,
+  ARCH-012, SDK-002, ARCH-003, CH-004, OBS-006, OPS-001/002/003 (Phase 3).
+  See `docs/audit/2026-06-01/`.
 
 ## [0.1.0] - 2026-04-13
 

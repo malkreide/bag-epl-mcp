@@ -19,6 +19,7 @@ import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from enum import StrEnum
+from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
@@ -63,6 +64,8 @@ class ServerSettings(BaseSettings):
     port: int = Field(default=8000, validation_alias=AliasChoices("MCP_PORT", "PORT"))
     # SDK-004: explizite Origin-Allow-List statt Wildcard.
     cors_origins: list[str] = ["https://claude.ai"]
+    # OBS-006: OpenTelemetry-Tracing (opt-in, benoetigt das [otel]-Extra).
+    otel_enabled: bool = False
 
 
 settings = ServerSettings()
@@ -102,8 +105,31 @@ HTTP_TIMEOUT      = 30.0
 DEFAULT_LIMIT     = 20
 MAX_LIMIT         = 100
 
+# ARCH-012: dokumentierte/„gepinnte" MCP-Protokoll-Version (Update-Policy: README).
+PROTOCOL_VERSION = "2025-06-18"
+# CH-004: OGD-CH-Standardlizenz fuer die zugrundeliegenden BAG-Open-Data.
+OGD_LICENSE = "CC BY 4.0"
+
 # Phase 2: FHIR-API-Endpunkt (wird aktiviert, sobald BAG publiziert)
 FHIR_BASE_URL = "https://epl.bag.admin.ch/fhir"  # Platzhalter
+
+
+# ─────────────────────────── Provenance / Envelope (SDK-002/CH-004) ─────────────
+# Treffer-Klassifikation fuer Such-Tools (ARCH-003): exakt / unscharf / keine.
+MatchType = Literal["exact", "fuzzy", "none"]
+
+
+class Provenance(BaseModel):
+    """Herkunft und Lizenz einer Antwort (CH-004 / SDK-002)."""
+    source: str
+    url: str
+    license: str = OGD_LICENSE
+    phase: str = "Phase 1"
+
+
+def _provenance(source: str, url: str) -> dict:
+    """Erzeugt einen Provenance-Block (Quelle + Lizenz) fuer Tool-Antworten."""
+    return Provenance(source=source, url=url).model_dump()
 
 # SEC-004 / SEC-021: Egress-Allow-List auf Code-Ebene (immutable).
 # Jeder ausgehende Request muss gegen diese Liste vertrauenswuerdiger
@@ -242,7 +268,9 @@ async def _sl_website_suche(suchbegriff: str, limit: int = DEFAULT_LIMIT) -> dic
 
 class SLSucheInput(BaseModel):
     """Eingabe fuer die Medikamentensuche in der Spezialitaetenliste."""
-    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    model_config = ConfigDict(
+        str_strip_whitespace=True, validate_assignment=True, extra="forbid", strict=True
+    )
 
     suchbegriff: str = Field(
         ..., min_length=1, max_length=200,
@@ -253,28 +281,32 @@ class SLSucheInput(BaseModel):
         description="Maximale Anzahl Ergebnisse (1-100)",
     )
     format: ResponseFormat = Field(
-        default=ResponseFormat.MARKDOWN,
+        default=ResponseFormat.MARKDOWN, strict=False,
         description="Ausgabeformat: 'markdown' oder 'json'",
     )
 
 
 class GGSLAbfrageInput(BaseModel):
     """Eingabe fuer GGSL-Abfrage bei Geburtsgebrechen."""
-    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    model_config = ConfigDict(
+        str_strip_whitespace=True, validate_assignment=True, extra="forbid", strict=True
+    )
 
     geburtsgebrechen_nr: str = Field(
         ..., min_length=1, max_length=10,
         description="Geburtsgebrechen-Nummer (z.B. '313' fuer Diabetes, '404' fuer Zystische Fibrose)",
     )
     format: ResponseFormat = Field(
-        default=ResponseFormat.MARKDOWN,
+        default=ResponseFormat.MARKDOWN, strict=False,
         description="Ausgabeformat: 'markdown' oder 'json'",
     )
 
 
 class MiGeLSucheInput(BaseModel):
     """Eingabe fuer die MiGeL-Suche."""
-    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    model_config = ConfigDict(
+        str_strip_whitespace=True, validate_assignment=True, extra="forbid", strict=True
+    )
 
     suchbegriff: str = Field(
         ..., min_length=1, max_length=200,
@@ -285,7 +317,7 @@ class MiGeLSucheInput(BaseModel):
         description="Maximale Anzahl Ergebnisse (1-100)",
     )
     format: ResponseFormat = Field(
-        default=ResponseFormat.MARKDOWN,
+        default=ResponseFormat.MARKDOWN, strict=False,
         description="Ausgabeformat: 'markdown' oder 'json'",
     )
 
@@ -297,14 +329,16 @@ class MiGeLSucheInput(BaseModel):
 
 class RechtskontextInput(BaseModel):
     """Eingabe fuer rechtliche Kontext-Abfrage."""
-    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+    model_config = ConfigDict(
+        str_strip_whitespace=True, validate_assignment=True, extra="forbid", strict=True
+    )
 
     frage: str = Field(
         ..., min_length=1, max_length=500,
         description="Rechtliche Frage zur Kassenpflicht (z.B. 'Welche Gesetze regeln die SL-Aufnahme?')",
     )
     format: ResponseFormat = Field(
-        default=ResponseFormat.MARKDOWN,
+        default=ResponseFormat.MARKDOWN, strict=False,
         description="Ausgabeformat: 'markdown' oder 'json'",
     )
 
@@ -318,12 +352,32 @@ async def epl_sl_suche(eingabe: SLSucheInput) -> str:
 
     Die SL enthaelt alle Arzneimittel, die von der obligatorischen
     Krankenpflegeversicherung (OKP) verguetet werden (KVG Art. 52).
+
+    <use_case>Beantwortet \u00abIst Medikament X kassenpflichtig?\u00bb. Liefert Treffer
+    aus der SL bzw. \u2014 solange die BAG-API nicht oeffentlich ist \u2014 einen
+    Direktlink plus Rechtsgrundlage. Fuer Geburtsgebrechen siehe
+    epl_ggsl_abfrage, fuer Hilfsmittel epl_migel_suche.</use_case>
     """
     try:
         ergebnis = await _sl_website_suche(eingabe.suchbegriff, eingabe.limit)
+        results = ergebnis.get("results", [])
+        # ARCH-003: Treffer klassifizieren; bei "none" Handlungshinweis mitgeben.
+        match_type: MatchType = "exact" if results else "none"
 
         if eingabe.format == ResponseFormat.JSON:
-            return json.dumps(ergebnis, ensure_ascii=False, indent=2)
+            envelope = {
+                "source": "BAG Spezialitaetenliste (SL)",
+                "provenance": _provenance("BAG Spezialitaetenliste (SL)", SL_BASE_URL),
+                "suchbegriff": eingabe.suchbegriff,
+                "match_type": match_type,
+                "count": len(results),
+                "results": results,
+            }
+            if "hinweis" in ergebnis:
+                envelope["hinweis"] = ergebnis["hinweis"]
+                envelope["direkt_link"] = ergebnis["direkt_link"]
+                envelope["fhir_status"] = ergebnis["fhir_status"]
+            return json.dumps(envelope, ensure_ascii=False, indent=2)
 
         # Markdown-Ausgabe
         md = f"## SL-Suche: \u00ab{eingabe.suchbegriff}\u00bb\n\n"
@@ -336,10 +390,11 @@ async def epl_sl_suche(eingabe: SLSucheInput) -> str:
             md += "- KVG Art. 52: Spezialitaetenliste\n"
             md += "- KLV Art. 30ff: Aufnahme-Kriterien (WZW: Wirksamkeit, Zweckmaessigkeit, Wirtschaftlichkeit)\n"
         else:
-            md += f"Gefundene Medikamente: {len(ergebnis.get('results', []))}\n\n"
-            for item in ergebnis.get("results", []):
+            md += f"Gefundene Medikamente: {len(results)}\n\n"
+            for item in results:
                 md += f"- **{item.get('name', 'Unbekannt')}**\n"
 
+        md += f"\n---\n*Quelle: BAG Spezialitaetenliste \u00b7 Lizenz: {OGD_LICENSE} \u00b7 {SL_BASE_URL}*\n"
         return md
 
     except ToolError:
@@ -356,6 +411,11 @@ async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput) -> str:
     Die Geburtsgebrechen-Spezialitaetenliste (GGSL) enthaelt Arzneimittel,
     die bei anerkannten Geburtsgebrechen von der Invalidenversicherung (IV)
     uebernommen werden.
+
+    <use_case>Beantwortet \u00abWelche Medikamente uebernimmt die IV bei
+    Geburtsgebrechen Nr. X?\u00bb. Liefert Rechtsgrundlage (IVG/GgV) und die
+    offizielle BAG-Quelle. Im Gegensatz zu epl_sl_suche geht es hier um
+    IV- statt OKP-Leistungen.</use_case>
     """
     try:
         gg_nr = eingabe.geburtsgebrechen_nr
@@ -376,6 +436,8 @@ async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput) -> str:
         }
 
         if eingabe.format == ResponseFormat.JSON:
+            info["source"] = "BAG GGSL"
+            info["provenance"] = _provenance("BAG GGSL", GGSL_INFO_URL)
             return json.dumps(info, ensure_ascii=False, indent=2)
 
         md = f"## GGSL-Abfrage: Geburtsgebrechen Nr. {gg_nr}\n\n"
@@ -383,6 +445,7 @@ async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput) -> str:
         md += f"**Offizielle Quelle:** [BAG GGSL]({info['link']})\n\n"
         md += f"**Rechtsgrundlage:** {info['rechtsgrundlage']}\n\n"
         md += f"**Hinweis:** {info['hinweis']}\n"
+        md += f"\n---\n*Quelle: BAG GGSL \u00b7 Lizenz: {OGD_LICENSE} \u00b7 {GGSL_INFO_URL}*\n"
         return md
 
     except ToolError:
@@ -398,6 +461,11 @@ async def epl_migel_suche(eingabe: MiGeLSucheInput) -> str:
 
     Die MiGeL enthaelt alle von der OKP vergueteten Mittel und Gegenstaende
     (KLV Art. 20), z.B. Rollstuehle, Hoergeraete, Inkontinenzprodukte.
+
+    <use_case>Beantwortet \u00abUebernimmt die OKP das Hilfsmittel X (z.B.
+    Rollstuhl, Hoergeraet)?\u00bb. Liefert Rechtsgrundlage (KLV Art. 20) und die
+    offizielle MiGeL-Quelle. Fuer Medikamente stattdessen epl_sl_suche.
+    </use_case>
     """
     try:
         info = {
@@ -413,6 +481,13 @@ async def epl_migel_suche(eingabe: MiGeLSucheInput) -> str:
         }
 
         if eingabe.format == ResponseFormat.JSON:
+            # ARCH-003: Phase 1 liefert noch keine Live-Treffer -> match_type "none"
+            # mit Handlungshinweis (offizieller Link).
+            info["source"] = "BAG MiGeL"
+            info["provenance"] = _provenance("BAG MiGeL", MIGEL_INFO_URL)
+            info["match_type"] = "none"
+            info["count"] = 0
+            info["results"] = []
             return json.dumps(info, ensure_ascii=False, indent=2)
 
         md = f"## MiGeL-Suche: \u00ab{eingabe.suchbegriff}\u00bb\n\n"
@@ -420,6 +495,7 @@ async def epl_migel_suche(eingabe: MiGeLSucheInput) -> str:
         md += f"**Offizielle Quelle:** [BAG MiGeL]({info['link']})\n\n"
         md += f"**Rechtsgrundlage:** {info['rechtsgrundlage']}\n\n"
         md += f"**ePL-Integration:** {info['migel_integration']}\n"
+        md += f"\n---\n*Quelle: BAG MiGeL \u00b7 Lizenz: {OGD_LICENSE} \u00b7 {MIGEL_INFO_URL}*\n"
         return md
 
     except ToolError:
@@ -435,6 +511,10 @@ async def epl_gesuchseingaenge() -> str:
 
     Transparenzliste: Zeigt, welche Medikamente aktuell zur Aufnahme
     in die SL beantragt sind.
+
+    <use_case>Beantwortet «Welche Medikamente sind aktuell zur Aufnahme in die
+    SL beantragt?» (Transparenz/Monitoring). Verweist auf die offizielle
+    BAG-Transparenzliste.</use_case>
     """
     try:
         info = {
@@ -456,6 +536,7 @@ async def epl_gesuchseingaenge() -> str:
         md += f"**SL-Portal:** [Gesuchseingaenge ansehen]({info['link']})\n\n"
         md += f"**BAG-Seite:** [Offizielle BAG-Seite]({info['direkt_link_bag']})\n\n"
         md += f"**Hinweis:** {info['hinweis']}\n"
+        md += f"\n---\n*Quelle: BAG Spezialitaetenliste · Lizenz: {OGD_LICENSE} · {SL_BASE_URL}*\n"
         return md
 
     except ToolError:
@@ -471,6 +552,11 @@ async def epl_rechtskontext(eingabe: RechtskontextInput) -> str:
 
     Gibt strukturierte Informationen zu den Rechtsgrundlagen der
     obligatorischen Krankenpflegeversicherung (WZW-Kriterien, KVG, KLV).
+
+    <use_case>Beantwortet «Auf welcher rechtlichen Grundlage beruht die
+    Kassenpflicht?» und erklaert die WZW-Kriterien (Wirksamkeit,
+    Zweckmaessigkeit, Wirtschaftlichkeit) mit Fedlex-Verweisen. Ergaenzt die
+    Such-Tools um den juristischen Kontext.</use_case>
     """
     try:
         rechtsrahmen = {
@@ -514,6 +600,10 @@ async def epl_rechtskontext(eingabe: RechtskontextInput) -> str:
         }
 
         if eingabe.format == ResponseFormat.JSON:
+            rechtsrahmen["source"] = "Fedlex (Bundesrecht)"
+            rechtsrahmen["provenance"] = _provenance(
+                "Fedlex (Bundesrecht)", "https://www.fedlex.admin.ch"
+            )
             return json.dumps(rechtsrahmen, ensure_ascii=False, indent=2)
 
         md = f"## Rechtskontext: {eingabe.frage}\n\n"
@@ -544,10 +634,16 @@ async def epl_server_info() -> str:
 
     Liefert Informationen zum aktuellen Funktionsumfang und den geplanten
     Erweiterungen des BAG-ePL-MCP-Servers.
+
+    <use_case>Beantwortet \u00abWas kann dieser Server, welche MCP-Version und welche
+    Phase?\u00bb. Nuetzlich zum Discovery der verfuegbaren Tools und des
+    Roadmap-Stands.</use_case>
     """
     info = {
         "server": "bag-epl-mcp",
         "version": "0.1.0",
+        "protocol_version": PROTOCOL_VERSION,
+        "license": OGD_LICENSE,
         "phase": "Phase 1 \u2014 XML/XLSX-Downloads + SL-Website-Zugriff",
         "tools": {
             "epl_sl_suche": "Medikamentensuche in der Spezialitaetenliste (SL)",
@@ -571,6 +667,7 @@ async def epl_server_info() -> str:
 
     md = "## BAG ePL MCP Server \u2014 Status\n\n"
     md += f"**Version:** {info['version']}\n\n"
+    md += f"**MCP-Protokoll:** {info['protocol_version']}\n\n"
     md += f"**Aktuelle Phase:** {info['phase']}\n\n"
     md += "### Verfuegbare Tools\n\n"
     for tool, desc in info["tools"].items():
@@ -678,12 +775,36 @@ def _build_http_app():
     return app
 
 
+def _init_otel(app) -> None:
+    """
+    OBS-006: optionales OpenTelemetry-Tracing (opt-in via ``MCP_OTEL_ENABLED=1``).
+
+    Auto-Instrumentierung der ASGI-App und des HTTP-Clients erzeugt Spans pro
+    Request bzw. ausgehendem Backend-Call. Exporter/Endpoint werden ueber die
+    Standard-``OTEL_*``-Umgebungsvariablen konfiguriert. Keine sensiblen Daten
+    (PII/Credentials) in Span-Attributen — die Auto-Instrumentierung loggt nur
+    Methode/Status/URL.
+    """
+    try:
+        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+        from opentelemetry.instrumentation.starlette import StarletteInstrumentor
+    except ImportError:
+        log.warning("otel_unavailable", hint="install the '[otel]' extra")
+        return
+    StarletteInstrumentor().instrument_app(app)
+    HTTPXClientInstrumentor().instrument()
+    log.info("otel_enabled")
+
+
 def _run_http() -> None:
     """Streamable-HTTP-Transport fuer Cloud-Deployments (Render etc.) starten."""
     import uvicorn
 
+    app = _build_http_app()
+    if settings.otel_enabled:
+        _init_otel(app)
     log.info("http_listen", host=settings.host, port=settings.port)
-    uvicorn.run(_build_http_app(), host=settings.host, port=settings.port)
+    uvicorn.run(app, host=settings.host, port=settings.port)
 
 
 def main() -> None:

@@ -173,6 +173,25 @@ Or with `uvx`:
 
 ## Architecture
 
+**Data flow (Phase 1):**
+
+```
+                         bag-epl-mcp (FastMCP)
+ \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510  MCP    \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510  HTTPS GET   \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510
+ \u2502 MCP Client \u2502\u25c0\u2500\u2500\u2500\u2500\u2500\u2500\u25b6\u2502  tools (read-only)             \u2502\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u25b6\u2502 sl.bag.admin.ch  \u2502
+ \u2502 (Claude    \u2502 stdio / \u2502   \u251c\u2500 epl_sl_suche              \u2502  egress      \u2502 www.bag.admin.ch \u2502
+ \u2502  Desktop,  \u2502 Stream- \u2502   \u251c\u2500 epl_ggsl_abfrage          \u2502  allow-list  \u2502 www.fedlex...    \u2502
+ \u2502  claude.ai)\u2502 able    \u2502   \u251c\u2500 epl_migel_suche           \u2502\u25c0\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2502 (public OGD)     \u2502
+ \u2502            \u2502 HTTP    \u2502   \u251c\u2500 epl_gesuchseingaenge       \u2502  (no auth)   \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518
+ \u2502            \u2502         \u2502   \u251c\u2500 epl_rechtskontext          \u2502
+ \u2502            \u2502         \u2502   \u2514\u2500 epl_server_info            \u2502   structured JSON logs \u2192 stderr
+ \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518         \u2502  resources: epl://uebersicht \u2026  \u2502
+                        \u2502  prompts:   epl_kassenpflicht\u2026  \u2502
+                        \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518
+```
+
+**Phase roadmap** (details in [`docs/ROADMAP.md`](docs/ROADMAP.md)):
+
 ```
 Phase 1 (current)  \u2192 SL website access + structured legal info
 Phase 2 (planned)  \u2192 FHIR/IDMP API (BAG, ~2025/2026)
@@ -180,6 +199,10 @@ Phase 3 (vision)   \u2192 MiGeL + AL via ePL-FHIR (2026/2027)
 ```
 
 The server is **already useful today** and will seamlessly upgrade when the BAG publishes its FHIR API.
+
+**MCP protocol version:** `2025-06-18` (surfaced via `epl_server_info`). SDK
+updates are proposed monthly via Dependabot; the protocol version is reviewed on
+every `mcp` SDK bump \u2014 see the versioning policy in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ---
 
@@ -190,6 +213,7 @@ The server is **already useful today** and will seamlessly upgrade when the BAG 
 - **No medical advice:** This server provides informational access to regulatory data only. For medical or legal decisions, always consult the official BAG sources and qualified professionals.
 - **Rate limits:** The SL website (sl.bag.admin.ch) is a public Angular SPA; the server enforces a 30s timeout per request. Use `limit` parameters conservatively.
 - **Data freshness:** Phase 1 tools link to live BAG sources. No caching is performed by this server.
+- **Data licence (OGD-CH):** The underlying BAG/Fedlex data is Swiss Open Government Data, licensed **CC BY 4.0**. Tool outputs carry a `source` / `provenance` block (JSON) or a source-and-licence footer (Markdown) so attribution is preserved.
 - **Terms of service:** Data is subject to the ToS of [sl.bag.admin.ch](https://sl.bag.admin.ch), [bag.admin.ch](https://www.bag.admin.ch), and [fedlex.admin.ch](https://www.fedlex.admin.ch).
 - **No guarantees:** This is a community project, not affiliated with the BAG or any government entity. Availability depends on upstream sources.
 
