@@ -24,16 +24,25 @@ jobs:
         run: python -m build
 
       - name: Snapshot tool-definition hashes (SEC-022)
+        # NB: write outside dist/ — the publish step runs twine over every file
+        # in the downloaded dist/ artifact and rejects non-distribution files.
         run: |
           pip install -e .
-          PYTHONPATH=src python scripts/snapshot_tool_hashes.py dist/tool-hashes.json
-          cat dist/tool-hashes.json
+          mkdir -p tool-hashes
+          PYTHONPATH=src python scripts/snapshot_tool_hashes.py tool-hashes/tool-hashes.json
+          cat tool-hashes/tool-hashes.json
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
+
+      - name: Upload tool-definition hashes
+        uses: actions/upload-artifact@v7
+        with:
+          name: tool-hashes
+          path: tool-hashes/tool-hashes.json
 
   publish:
     name: Publish to PyPI
