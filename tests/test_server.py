@@ -7,12 +7,15 @@ Mocked-Tests (kein Netzwerk erforderlich) + Live-Tests (opt-in).
 from __future__ import annotations
 
 import json
+import socket
 
 import httpx
 import pytest
 import respx
+from mcp.server.fastmcp.exceptions import ToolError
 
 from bag_epl_mcp.server import (
+    ALLOWED_HOSTS,
     DEFAULT_LIMIT,
     MAX_LIMIT,
     SL_API_URL,
@@ -20,7 +23,9 @@ from bag_epl_mcp.server import (
     MiGeLSucheInput,
     RechtskontextInput,
     ResponseFormat,
+    ServerSettings,
     SLSucheInput,
+    _assert_safe_url,
     _handle_error,
     _paginate,
     _sl_website_suche,
@@ -30,7 +35,29 @@ from bag_epl_mcp.server import (
     epl_rechtskontext,
     epl_server_info,
     epl_sl_suche,
+    mcp,
 )
+
+
+def _fake_getaddrinfo(ip: str):
+    """Erzeugt ein getaddrinfo-Stub, das immer ``ip`` zurueckgibt."""
+    def _inner(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (ip, port or 443))]
+    return _inner
+
+
+@pytest.fixture(autouse=True)
+def _stub_dns(request, monkeypatch):
+    """
+    Haelt Unit-Tests hermetisch: der Egress-Guard loest DNS sonst echt auf.
+    Live-Tests (Marker ``live``) nutzen weiterhin echtes DNS.
+    """
+    if request.node.get_closest_marker("live"):
+        return
+    monkeypatch.setattr(
+        "bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("93.184.216.34")
+    )
+
 
 # ─────────────────────────── Hilfsfunktionen ───────────────────────────────────
 
@@ -293,6 +320,105 @@ class TestServerInfo:
         assert "BAG ePL MCP Server" in result
         assert "Phase 1" in result
         assert "epl_sl_suche" in result
+
+
+# ─────────────────────────── Live-Tests (opt-in) ──────────────────────────────
+
+# ─────────────────────────── Egress-Guard (SEC-004/005/021) ───────────────────
+
+class TestEgressGuard:
+    """Tests fuer die SSRF-/Egress-Validierung in _assert_safe_url."""
+
+    def test_https_und_erlaubter_host_ok(self):
+        # 93.184.216.34 (public) via Stub -> kein Fehler
+        _assert_safe_url("https://sl.bag.admin.ch/api/search")
+
+    def test_http_schema_abgelehnt(self):
+        with pytest.raises(ToolError):
+            _assert_safe_url("http://sl.bag.admin.ch/api/search")
+
+    def test_unerlaubter_host_abgelehnt(self):
+        with pytest.raises(ToolError):
+            _assert_safe_url("https://evil.example.com/steal")
+
+    def test_private_ip_abgelehnt(self, monkeypatch):
+        monkeypatch.setattr(
+            "bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("127.0.0.1")
+        )
+        with pytest.raises(ToolError):
+            _assert_safe_url("https://sl.bag.admin.ch/api/search")
+
+    def test_link_local_metadata_ip_abgelehnt(self, monkeypatch):
+        # Cloud-Metadata-Endpoint (169.254.169.254) muss blockiert werden.
+        monkeypatch.setattr(
+            "bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("169.254.169.254")
+        )
+        with pytest.raises(ToolError):
+            _assert_safe_url("https://www.bag.admin.ch/x")
+
+    @pytest.mark.asyncio
+    async def test_http_get_ruft_guard_auf(self):
+        # Disallowed Host -> _http_get muss vor dem Request abbrechen.
+        from bag_epl_mcp.server import _http_get
+        with pytest.raises(ToolError):
+            await _http_get("https://evil.example.com")
+
+    def test_allowed_hosts_nur_admin_ch(self):
+        assert all(h.endswith(".admin.ch") for h in ALLOWED_HOSTS)
+
+
+# ─────────────────────────── Settings & Transport (SCALE-001/SEC-016) ──────────
+
+class TestSettings:
+    """Tests fuer die Transport-/Host-Konfiguration via Env-Vars."""
+
+    def test_defaults_sicher(self):
+        s = ServerSettings()
+        assert s.transport == "stdio"          # Default oeffnet keine Ports
+        assert s.host == "127.0.0.1"           # SEC-016: kein 0.0.0.0 per Default
+
+    def test_env_override(self, monkeypatch):
+        monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
+        monkeypatch.setenv("MCP_HOST", "0.0.0.0")
+        monkeypatch.setenv("MCP_PORT", "9000")
+        s = ServerSettings()
+        assert s.transport == "streamable-http"
+        assert s.host == "0.0.0.0"
+        assert s.port == 9000
+
+
+# ─────────────────────────── Fehler-Maskierung (OBS-002) ───────────────────────
+
+class TestErrorMasking:
+    """Generische Fehler duerfen keine internen Details preisgeben."""
+
+    def test_keine_rohe_message(self):
+        err = ValueError("SELECT * FROM users; /secret/path leaked")
+        msg = _handle_error(err, "Kontext")
+        assert "ValueError" in msg          # Typ-Kategorie ok
+        assert "SELECT" not in msg          # rohe Message NICHT geleakt
+        assert "/secret/path" not in msg
+
+
+# ─────────────────────────── Tool-Annotations (ARCH-009) ───────────────────────
+
+class TestToolAnnotations:
+    """Alle Tools muessen Annotations deklarieren (read-only / open-world)."""
+
+    @pytest.mark.asyncio
+    async def test_alle_tools_read_only(self):
+        tools = await mcp.list_tools()
+        assert tools, "keine Tools registriert"
+        for t in tools:
+            assert t.annotations is not None, f"{t.name}: keine Annotations"
+            assert t.annotations.readOnlyHint is True, f"{t.name}: nicht read-only"
+
+    @pytest.mark.asyncio
+    async def test_sl_suche_open_world(self):
+        tools = {t.name: t for t in await mcp.list_tools()}
+        assert tools["epl_sl_suche"].annotations.openWorldHint is True
+        # rein statische Tools rufen keine externen Systeme auf
+        assert tools["epl_server_info"].annotations.openWorldHint is False
 
 
 # ─────────────────────────── Live-Tests (opt-in) ──────────────────────────────

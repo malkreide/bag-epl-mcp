@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Env-based transport selection** (`MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT`):
+  the Streamable HTTP transport for cloud deployment is now actually
+  implemented (previously only documented). Default remains `stdio`.
+- CORS middleware on the HTTP transport exposing `Mcp-Session-Id` for browser
+  clients (claude.ai), with an explicit origin allow-list (`MCP_CORS_ORIGINS`).
+- Tool annotations (`readOnlyHint`, `openWorldHint`) on all six tools.
+- Egress allow-list guard (`ALLOWED_HOSTS` + `_assert_safe_url`): HTTPS-only,
+  host allow-list, and resolved-IP blocklist (SSRF protection) before any
+  outbound request.
+- `docs/SECURITY.md` — threat model (Lethal-Trifecta assessment, no-auth/
+  session rationale, egress and host-binding policy).
+- `[http]` optional dependency group (`uvicorn`, `starlette`).
+
+### Changed
+- Console entrypoint is now `bag_epl_mcp.server:main` (transport-aware).
+- Configuration via a `pydantic-settings` `ServerSettings` object instead of
+  module-level transport globals.
+- Errors now surface as MCP `isError` results (raised `ToolError`); the generic
+  error path no longer echoes raw exception messages to the model.
+- Corrected README/README.de deployment instructions to the real
+  env-var-based mechanism and the `/mcp` endpoint.
+
+### Security
+- Addresses audit findings SCALE-001, ARCH-009, SDK-004, SEC-004/005/021,
+  SEC-016, SEC-019, SEC-009 and OBS-001/002 (see `docs/audit/2026-06-01/`).
+
 ## [0.1.0] - 2026-04-13
 
 ### Added
