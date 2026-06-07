@@ -269,3 +269,5 @@ Hayal Oezkan \u00b7 [malkreide](https://github.com/malkreide)
 - **Related:** [fedlex-mcp](https://github.com/malkreide/fedlex-mcp) \u2014 Swiss federal law
 - **Related:** [swiss-cultural-heritage-mcp](https://github.com/malkreide/swiss-cultural-heritage-mcp) \u2014 Cultural heritage data
 - **Portfolio:** [Swiss Public Data MCP Portfolio](https://github.com/malkreide)
+
+<!-- mcp-name: io.github.malkreide/bag-epl-mcp -->
