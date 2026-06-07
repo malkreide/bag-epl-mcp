@@ -61,6 +61,7 @@ dev = [
 bag-epl-mcp = "bag_epl_mcp.server:main"
 
 [project.urls]
+"mcp-name" = "io.github.malkreide/bag-epl-mcp"
 Homepage   = "https://github.com/malkreide/bag-epl-mcp"
 Repository = "https://github.com/malkreide/bag-epl-mcp"
 Issues     = "https://github.com/malkreide/bag-epl-mcp/issues"
