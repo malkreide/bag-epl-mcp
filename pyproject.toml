@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name        = "bag-epl-mcp"
-version     = "0.2.3"
+version     = "0.2.4"
 description = "MCP Server for the Swiss BAG electronic benefits platform (ePL): SL, GGSL, MiGeL"
 readme      = "README.md"
 license     = { file = "LICENSE" }
