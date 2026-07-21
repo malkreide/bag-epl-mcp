@@ -28,7 +28,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "mcp[cli]>=1.27.2",
+    "mcp[cli]>=1.28.1",
     "httpx>=0.28.1",
     "httpcore>=1.0.9",
     "pydantic>=2.13.4",
