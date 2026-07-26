@@ -37,10 +37,16 @@ feste Allow-List Schweizer Bundes-Hosts aus (`sl.bag.admin.ch`,
 | Tool-Fläche | 6 rein lesende Tools, `epl_`-Namespace, `readOnlyHint=true` (SEC-014) |
 | Container | Mehrstufiges `Dockerfile` läuft als Nicht-Root (UID 10001) mit `HEALTHCHECK` (SEC-007) |
 
-Der jüngste Audit-Lauf (Re-Audit, `2026-06-01`) weist **production-ready** aus:
-39 Pass · 0 Fail · 5 partiell (nicht blockierend) · 24 n/a. Den vollständigen
-Bericht finden Sie unter [`docs/audit/`](docs/audit/), die Härtungs-Historie im
-`CHANGELOG.md`.
+Der jüngste unabhängige Re-Audit (Lauf `2026-07-26T094928-Z-bag-epl-mcp`,
+Skill v1.0.0, Katalog mit 68 Checks) weist **production-ready** aus (keine
+blockierenden critical/high-Fails): **29 Pass · 11 partiell · 0 Fail** über 40
+anwendbare Checks. Die 11 partiellen Befunde sind nicht blockierende
+Accepted-Risk-/Deferred-Punkte (SEC-009, SEC-014/015, SCALE-002/003/006,
+SEC-021, SEC-022, OBS-006, OPS-002, ARCH-011). Scorecard, Findings und Bericht
+liegen unter
+[`audits/2026-07-26T094928-Z-bag-epl-mcp/`](audits/2026-07-26T094928-Z-bag-epl-mcp/);
+der frühere Re-Audit `2026-06-01` bleibt unter [`docs/audit/`](docs/audit/), die
+Härtungs-Historie im `CHANGELOG.md`.
 
 ## Akzeptierte Risiken (Kontrollen auf Portfolio-Ebene)
 

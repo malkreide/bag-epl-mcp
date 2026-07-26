@@ -36,10 +36,15 @@ Hardening already in place:
 | Tool surface | 6 read-only tools, `epl_` namespaced, `readOnlyHint=true` (SEC-014) |
 | Container | Multi-stage `Dockerfile` runs non-root (UID 10001) with a `HEALTHCHECK` (SEC-007) |
 
-The latest audit run (re-audit, `2026-06-01`) reports **production-ready**:
-39 pass · 0 fail · 5 partial (non-blocking) · 24 n/a. See
-[`docs/audit/`](docs/audit/) for the full report and `CHANGELOG.md` for the
-hardening history.
+The most recent independent re-audit (run `2026-07-26T094928-Z-bag-epl-mcp`,
+skill v1.0.0, catalog of 68 checks) reports **production-ready** (no blocking
+critical/high failures): **29 pass · 11 partial · 0 fail** across 40 applicable
+checks. The 11 partials are non-blocking accepted-risk / deferred items
+(SEC-009, SEC-014/015, SCALE-002/003/006, SEC-021, SEC-022, OBS-006, OPS-002,
+ARCH-011). The full scorecard, findings and report are in
+[`audits/2026-07-26T094928-Z-bag-epl-mcp/`](audits/2026-07-26T094928-Z-bag-epl-mcp/);
+the earlier `2026-06-01` re-audit remains in [`docs/audit/`](docs/audit/) and
+the hardening history in `CHANGELOG.md`.
 
 ## Accepted risks (portfolio-level controls)
 
