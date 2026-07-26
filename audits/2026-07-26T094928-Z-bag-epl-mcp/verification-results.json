@@ -1,0 +1,490 @@
+{
+  "audit_meta": {
+    "server_name": "bag-epl-mcp",
+    "run_id": "2026-07-26T094928-Z-bag-epl-mcp",
+    "skill_version": "1.0.0",
+    "policy": "fail-or-partial"
+  },
+  "results": {
+    "ARCH-001": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:511 — @mcp.tool epl_sl_suche; consistent snake_case, epl_ prefixed, no spaces/dots",
+        "src/bag_epl_mcp/server.py:512,572,625,674,718,800 — all 6 tool fns follow one convention",
+        "src/bag_epl_mcp/server.py:519 — description carries <use_case> context, not a bare verb"
+      ],
+      "gaps": []
+    },
+    "ARCH-002": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:519,580,632,681,725,807 — <use_case> tag in all 6 tool descriptions (100% >= 80%)",
+        "tests/test_unit.py:404-408 — test asserts >=80% of tools carry <use_case>",
+        "src/bag_epl_mcp/server.py:513-522 — descriptions are multi-sentence with cross-tool differentiation"
+      ],
+      "gaps": []
+    },
+    "ARCH-003": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:141 — MatchType = Literal['exact','fuzzy','none'] on search envelopes",
+        "src/bag_epl_mcp/server.py:529 — SL search classifies match_type and returns direkt_link + hinweis on empty",
+        "src/bag_epl_mcp/server.py:641-652 — MiGeL returns match_type 'none' with actionable official link, not bare []"
+      ],
+      "gaps": []
+    },
+    "ARCH-004": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "high",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:70-93 — pydantic-settings ServerSettings (transport/host/port), no global module vars",
+        "src/bag_epl_mcp/server.py:512 — tool handlers take ctx: Context, never a raw request object",
+        "src/bag_epl_mcp/server.py:996-1006 — main() selects stdio vs streamable-http purely from MCP_TRANSPORT env",
+        "src/bag_epl_mcp/server.py:103-114 — shared _lifespan HTTP-client setup common to both transports"
+      ],
+      "gaps": []
+    },
+    "ARCH-005": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "critical",
+      "evidence": [
+        "grep of src/ — no api_key/password/secret/token assignments; server is unauthenticated (no secrets to hardcode)",
+        ".gitignore:6 — .env is git-ignored",
+        "src/bag_epl_mcp/server.py:70-93 — pydantic-settings loads config from env; no os.environ.get defaults with real values",
+        "src/bag_epl_mcp/server.py:365-389 — error handler logs no credentials; no f-string dump of settings"
+      ],
+      "gaps": [
+        "No CI secret-scanning (gitleaks/trufflehog) on PRs and no .env.example — defense-in-depth only; residual risk nil as the server holds zero secrets"
+      ]
+    },
+    "ARCH-006": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "high",
+      "evidence": [
+        "grep '@mcp.tool' src/ — exactly 6 tools (well under the 8-tool guidance)",
+        "src/bag_epl_mcp/server.py:511-850 — use-case oriented tools (suche/abfrage/rechtskontext), not 1:1 REST endpoint mapping",
+        "src/bag_epl_mcp/server.py:511 — anchor query 'is X reimbursed?' answered by a single epl_sl_suche call"
+      ],
+      "gaps": []
+    },
+    "ARCH-007": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:531-541 — tools return self-contained envelopes (results + provenance + hinweis), not bare IDs for follow-up calls",
+        "src/bag_epl_mcp/server.py:732-772 — epl_rechtskontext returns full legal context in one call",
+        "src/bag_epl_mcp/server.py:144-154 — every result carries provenance so aggregated output stays explainable"
+      ],
+      "gaps": []
+    },
+    "ARCH-008": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:855,871 — two Resources (epl://uebersicht, epl://rechtsrahmen)",
+        "src/bag_epl_mcp/server.py:891,905 — two Prompts (epl_kassenpflicht_check, epl_schulgesundheit_recherche)",
+        "src/bag_epl_mcp/server.py:511-850 — Tools primitive; all three MCP primitives are used"
+      ],
+      "gaps": []
+    },
+    "ARCH-009": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "high",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:511,571,624,673,717,799 — every tool sets explicit ToolAnnotations(readOnlyHint=True, openWorldHint=...)",
+        "tests/test_unit.py:391-401 — tests assert all tools readOnlyHint True and openWorldHint correctness",
+        "docs/SECURITY.md:104 — tool surface documented as readOnlyHint=true"
+      ],
+      "gaps": [
+        "idempotentHint not set on any tool (minor; all tools are idempotent GETs)"
+      ]
+    },
+    "ARCH-011": {
+      "status": "partial",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "Repo root — README.md, README.de.md, CHANGELOG.md, LICENSE, pyproject.toml all present",
+        "src/bag_epl_mcp/ + tests/ + .github/workflows/ present; pyproject.toml:69 packages=['src/bag_epl_mcp'] (correct src-layout)",
+        ".github/workflows/ci.yml + publish.yml present"
+      ],
+      "gaps": [
+        "6 tools (>5) all live in a single 1010-line src/bag_epl_mcp/server.py; no tools/ package split and server.py far exceeds the ~200-line registry-only guidance (ARCH-011 Modus 4)"
+      ]
+    },
+    "ARCH-012": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:131 — PROTOCOL_VERSION = '2025-06-18' pinned explicitly, not 'latest'",
+        "README.md:207-208 — 'MCP protocol version 2025-06-18' section with monthly-review update policy",
+        ".github/dependabot.yml:1-13 — monthly pip dependency-update PRs; CHANGELOG.md present"
+      ],
+      "gaps": []
+    },
+    "CH-004": {
+      "status": "pass",
+      "category": "CH",
+      "severity": "medium",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:133,144-154 — OGD_LICENSE='CC BY 4.0'; every envelope carries a Provenance(source,url,license) block",
+        "README.md:220 — 'Data licence (OGD-CH)' section names CC BY 4.0 and attribution mechanism",
+        "tests/test_unit.py:173-174,189 — assert OGD license + source in tool output"
+      ],
+      "gaps": []
+    },
+    "OBS-001": {
+      "status": "pass",
+      "category": "OBS",
+      "severity": "high",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:565-568 — tools re-raise ToolError (FastMCP maps to isError tool-result, not a JSON-RPC transport error)",
+        "src/bag_epl_mcp/server.py:365-389 — _handle_error returns friendly per-category execution-error messages (404/429/503/timeout/connect)",
+        "tests/test_unit.py:78-107 — tests cover execution-error handling paths"
+      ],
+      "gaps": [
+        "No explicit standardized JSON-RPC numeric codes and no dedicated protocol-error (unknown-tool) test; relies on FastMCP framework behaviour"
+      ]
+    },
+    "OBS-002": {
+      "status": "pass",
+      "category": "OBS",
+      "severity": "high",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:371-372 — full error detail logged to stderr only",
+        "src/bag_epl_mcp/server.py:387-389 — only the exception type name is returned to the LLM; no traceback/SQL/paths",
+        "tests/test_unit.py:101-106 — asserts raw 'SELECT...'/'/secret/path' never reach the returned message"
+      ],
+      "gaps": []
+    },
+    "OBS-003": {
+      "status": "pass",
+      "category": "OBS",
+      "severity": "medium",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:38-47 — structlog JSONRenderer + ISO timestamps + add_log_level",
+        "src/bag_epl_mcp/server.py:51-66 — _bind_call_context binds tool, correlation_id, request_id, client_id per call",
+        "pyproject.toml:36 — structlog in runtime dependencies; server uses info/warning/error/debug levels"
+      ],
+      "gaps": []
+    },
+    "OBS-004": {
+      "status": "pass",
+      "category": "OBS",
+      "severity": "critical",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:45 — structlog WriteLoggerFactory(file=sys.stderr): all logs to stderr, stdout reserved for JSON-RPC",
+        "grep 'print(' src/ — no print statements anywhere in src/",
+        "src/bag_epl_mcp/server.py:35-37 — comment documents OBS-004 stdout/stderr split"
+      ],
+      "gaps": []
+    },
+    "OBS-006": {
+      "status": "partial",
+      "category": "OBS",
+      "severity": "medium",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:950-982 — OpenTelemetry TracerProvider + OTLP exporter + service.name; StarletteInstrumentor + HTTPXClientInstrumentor auto-instrumentation",
+        "src/bag_epl_mcp/server.py:966-975 — silent no-op when [otel] extra absent; OTEL_* env-configurable endpoint",
+        "pyproject.toml:44-49 — otel optional extra with exporter + instrumentation packages"
+      ],
+      "gaps": [
+        "Only ASGI + httpx auto-instrumentation; no per-tool span with mcp.tool.name / mcp.user.id / mcp.tool.result.is_error attributes as required by OBS-006 Modus 1",
+        "Tracing lives in the optional [otel] extra (silent no-op if not installed), so it is off by default in a base install"
+      ]
+    },
+    "OPS-001": {
+      "status": "pass",
+      "category": "OPS",
+      "severity": "high",
+      "evidence": [
+        "tests/test_unit.py:158-203 — respx-mocked unit tests, hermetic (conftest.py:17-27 stubs DNS)",
+        "tests/test_live.py:27 — pytestmark = [pytest.mark.live, ...]; 8 live tests, one per tool",
+        "pyproject.toml:75-77 — 'live' marker registered; .github/workflows/ci.yml:30 runs pytest -m 'not live'"
+      ],
+      "gaps": [
+        "No scheduled nightly live-test workflow (live suite is manual/opt-in only); per-tool unit-test count is uneven (e.g. epl_gesuchseingaenge has a single direct test)"
+      ]
+    },
+    "OPS-002": {
+      "status": "partial",
+      "category": "OPS",
+      "severity": "medium",
+      "evidence": [
+        "README.md:167,178,213 — Example Use Cases (anchor demo), ASCII architecture diagram, and Safety & Limits (>=3 limits) sections present",
+        "CHANGELOG.md present (Keep-a-Changelog); CONTRIBUTING.md + CONTRIBUTING.de.md bilingual",
+        "README.md:22-263 — all 8 mandatory English sections present (overview, install, tools, config, security, architecture, limits, license)"
+      ],
+      "gaps": [
+        "README.de.md lacks a dedicated Configuration/Konfiguration section (Claude Desktop JSON + Cloud Deployment) that README.md:101-155 has, so EN/DE top-level section parity is incomplete"
+      ]
+    },
+    "OPS-003": {
+      "status": "pass",
+      "category": "OPS",
+      "severity": "high",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:819 — Phase 1 explicitly declared; README + epl_server_info surface current phase",
+        "src/bag_epl_mcp/server.py:511,571 — phase matches annotations: all tools readOnlyHint=True (no destructive tools in Phase 1)",
+        "docs/ROADMAP.md:6-45 — phase-specific roadmap with Phase 1->2->3 prerequisites (audit/ISDS/DSG, GL sign-off)"
+      ],
+      "gaps": []
+    },
+    "SCALE-001": {
+      "status": "pass",
+      "category": "SCALE",
+      "severity": "high",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:1003-1006 — env-based transport selection (stdio vs streamable-http)",
+        "render.yaml:12-14 + Dockerfile:27 — cloud deployment sets MCP_TRANSPORT=streamable-http",
+        "src/bag_epl_mcp/server.py — no WebSocket transport implementation"
+      ],
+      "gaps": []
+    },
+    "SCALE-002": {
+      "status": "partial",
+      "category": "SCALE",
+      "severity": "high",
+      "evidence": [
+        "deploy/haproxy.cfg:30-37 — reference stick-table on Mcp-Session-Id with explicit 30m TTL",
+        "docs/SECURITY.md:41-56 — documents single-instance Phase-1 operation requirement"
+      ],
+      "gaps": [
+        "Sticky-session / shared-state routing is a reference HAProxy config only; not wired into the actual Render deployment (single instance) and no shared-state session manager",
+        "No failover test demonstrating a session surviving a backend change"
+      ]
+    },
+    "SCALE-003": {
+      "status": "partial",
+      "category": "SCALE",
+      "severity": "high",
+      "evidence": [
+        "deploy/haproxy.cfg:33-34 — stick-table type string len 64 size 100k expire 30m; stick on req.hdr(Mcp-Session-Id)",
+        "docs/SECURITY.md:41-56 — routing + TTL documented for the scaling path"
+      ],
+      "gaps": [
+        "Edge-LB Mcp-Session-Id routing exists only as an undeployed reference config; Render runs a single instance so no edge-LB is actually in front",
+        "Failover behaviour on backend loss is untested"
+      ]
+    },
+    "SCALE-004": {
+      "status": "pass",
+      "category": "SCALE",
+      "severity": "medium",
+      "evidence": [
+        "Dockerfile:3,17 — two named stages (AS builder, AS runtime)",
+        "Dockerfile:17 — runtime FROM python:3.12-slim; Dockerfile:31 USER app (non-root)",
+        "Dockerfile:35-36 — HEALTHCHECK directive hitting /healthz for LB integration"
+      ],
+      "gaps": [
+        "Final image size not independently verified in this run (structure is correct)"
+      ]
+    },
+    "SCALE-006": {
+      "status": "partial",
+      "category": "SCALE",
+      "severity": "medium",
+      "evidence": [
+        "render.yaml:8 — plan: starter selected explicitly, defining the platform memory/CPU envelope"
+      ],
+      "gaps": [
+        "No explicit FD/ulimit configuration (>=4096) for the many outbound connections case",
+        "OOM/clean-crash + restart behaviour not tested; container memory limit relies solely on the Render plan, not an explicit container-level limit"
+      ]
+    },
+    "SEC-004": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "critical",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:273-280 — _assert_safe_url enforces https + host allow-list before every request",
+        "src/bag_epl_mcp/server.py:283-299 — _resolve_and_validate resolves once, blocks private/loopback/link-local/reserved incl 169.254.169.254 (and IPv6 ::1 / fe80 via is_loopback/is_link_local)",
+        "tests/test_unit.py:301-305 — asserts cloud-metadata IP 169.254.169.254 is rejected"
+      ],
+      "gaps": [
+        "No production egress proxy (Smokescreen) as network-layer defense-in-depth; code-layer SSRF controls are complete"
+      ]
+    },
+    "SEC-005": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:302-318 — _PinnedNetworkBackend resolves once and pins the TCP connection to the validated IP",
+        "src/bag_epl_mcp/server.py:306-308 — TLS SNI/cert validation stays on the original hostname (httpcore start_tls with origin host)",
+        "tests/test_unit.py:328-342 + tests/test_live.py:36-42 — assert pinned IP is dialled and live TLS stays valid against hostname"
+      ],
+      "gaps": []
+    },
+    "SEC-006": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:80 — transport default 'stdio'; HTTP only via explicit MCP_TRANSPORT",
+        "src/bag_epl_mcp/server.py:1003-1006 — default path calls mcp.run() (stdio), opens no TCP port",
+        "README.md:80-91 — local stdio use-case documented primarily; cloud path documented separately with security notes"
+      ],
+      "gaps": []
+    },
+    "SEC-007": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "Dockerfile:20 — creates app user/group with UID/GID 10001 (>=10000)",
+        "Dockerfile:31 — USER app for runtime (non-root)",
+        "docs/SECURITY.md:86-95 — documents hardened run: docker run --read-only --cap-drop ALL"
+      ],
+      "gaps": [
+        "read-only rootfs / cap-drop / seccomp are documented run-time recommendations, not enforced in the image or a K8s SecurityContext (no K8s in scope)"
+      ]
+    },
+    "SEC-008": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "medium",
+      "evidence": [
+        "pyproject.toml — no pre/postinstall hooks; no dynamic code loading in setup",
+        ".github/workflows/publish.yml:47-65 — PyPI publish via pypa/gh-action-pypi-publish with id-token: write (OIDC Trusted Publisher)",
+        "README.md:56-76 — full, transparent installation commands"
+      ],
+      "gaps": []
+    },
+    "SEC-009": {
+      "status": "partial",
+      "category": "SEC",
+      "severity": "critical",
+      "evidence": [
+        "docs/SECURITY.md:41-56 — documents the stateless/unauthenticated model and the accepted-risk decision",
+        "SECURITY.md:52-56 — SEC-009 recorded as N/A (no auth) with re-audit trigger if auth is added"
+      ],
+      "gaps": [
+        "No cryptographic user_id:session_id binding, no validated OAuth sub, no server-side session invalidation — by design (no authentication, public read-only data). Documented accepted-risk; must be re-introduced if auth/per-user state is ever added"
+      ]
+    },
+    "SEC-013": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "grep of src/ — no API keys/secrets in code; server is unauthenticated (Public Open Data, Stufe-1 acceptable)",
+        "Dockerfile:24-29 — no secret material in ENV layers (only transport/host/port)",
+        "SECURITY.md:33 + .gitignore:6 — 'Env-vars only, no hardcoded secrets', .env git-ignored"
+      ],
+      "gaps": [
+        "No dedicated docs/secret-management.md documenting the Stufe-1 decision (substantially covered by SECURITY.md); no secrets exist so residual risk is nil"
+      ]
+    },
+    "SEC-014": {
+      "status": "partial",
+      "category": "SEC",
+      "severity": "medium",
+      "evidence": [
+        "docs/SECURITY.md:101-110 — documents no MCP-gateway tool allow-list; static, in-repo, PR-reviewed tool surface",
+        "SECURITY.md:58-63 — recorded as portfolio/gateway-layer accepted-risk"
+      ],
+      "gaps": [
+        "No gateway-level per-team/role default-deny tool allow-list; deferred to a portfolio MCP gateway (documented accepted-risk for a single public read-only server)"
+      ]
+    },
+    "SEC-015": {
+      "status": "partial",
+      "category": "SEC",
+      "severity": "medium",
+      "evidence": [
+        "docs/SECURITY.md:101-110 — documents absence of pre-flight tool-poisoning detection; tools are static and authored in-repo",
+        "SECURITY.md:58-63 — recorded as gateway/host-layer accepted-risk"
+      ],
+      "gaps": [
+        "No pre-flight tool-poisoning detection layer (system-prompt/override/invisible-char/homoglyph patterns); deferred to gateway (documented accepted-risk)"
+      ]
+    },
+    "SEC-016": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "critical",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:82 — host default '127.0.0.1' (loopback), 0.0.0.0 never hardcoded as default",
+        "Dockerfile:28 + render.yaml:15 — MCP_HOST=0.0.0.0 set only inside the container/cloud env, explicitly",
+        "README.md:90-91 + tests/test_unit.py:371 — README explains local/container split; test asserts default host is 127.0.0.1"
+      ],
+      "gaps": []
+    },
+    "SEC-018": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:434-436 — all input models use ConfigDict(strict=True, extra='forbid', str_strip_whitespace=True)",
+        "src/bag_epl_mcp/server.py:438-445 — suchbegriff min_length/max_length; limit ge=1 le=100",
+        "tests/test_unit.py:122-137 — tests reject empty strings, extra fields, and wrong types (strict)"
+      ],
+      "gaps": [
+        "String fields use length bounds but no whitelist regex pattern (optional per criterion)"
+      ]
+    },
+    "SEC-019": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "critical",
+      "evidence": [
+        "docs/SECURITY.md:24-40 — Lethal-Trifecta assessment: score 2/3 (no private data; external comms read-only against allow-list)",
+        "src/bag_epl_mcp/server.py:254-258 — ALLOWED_HOSTS as frozenset (not runtime-mutable); no write/send capability",
+        "docs/SECURITY.md:37-40 — documents why the injection->exfiltration chain does not close"
+      ],
+      "gaps": []
+    },
+    "SEC-020": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "critical",
+      "evidence": [
+        "grep of src/ — no os.system, subprocess, shell=True, eval, exec, or os.popen anywhere",
+        "src/bag_epl_mcp/server.py — no shell invocation; all outbound work goes through httpx",
+        "src/bag_epl_mcp/server.py:126 — HTTP_TIMEOUT=30.0 applied to all outbound calls (resource-exhaustion guard)"
+      ],
+      "gaps": []
+    },
+    "SEC-021": {
+      "status": "partial",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:254-258 — code-layer ALLOWED_HOSTS frozenset (not config-mutable)",
+        "src/bag_epl_mcp/server.py:356 — _assert_safe_url pre-request check invoked before every outbound GET",
+        "docs/SECURITY.md:57-78 — allow-list hosts documented"
+      ],
+      "gaps": [
+        "No network-layer egress control (K8s NetworkPolicy / security group / Cloudflare WARP) as defense-in-depth on Render — only the code-layer allow-list is enforced",
+        "No documented allow-list update/change procedure"
+      ]
+    },
+    "SEC-022": {
+      "status": "partial",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "src/bag_epl_mcp/server.py:511-800 — all tools carry the consistent epl_ namespace prefix",
+        "scripts/snapshot_tool_hashes.py:24-36 — deterministic SHA-256 snapshot of name+description+inputSchema+annotations per tool",
+        ".github/workflows/publish.yml:26-45 — snapshot generated at each release and uploaded as a build artifact"
+      ],
+      "gaps": [
+        "Tool-hash snapshot is a per-release CI artifact only; no baseline tool-hashes.json is committed to the repo, so there is no in-repo reference to diff against for rug-pull detection"
+      ]
+    }
+  }
+}
