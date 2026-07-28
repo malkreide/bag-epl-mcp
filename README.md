@@ -248,6 +248,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
+## Security
+
+See [SECURITY.md](SECURITY.md) ([Deutsch](SECURITY.de.md)) for the security
+posture and how to report a vulnerability.
+
+---
+
 ## License
 
 MIT License \u2014 see [LICENSE](LICENSE)

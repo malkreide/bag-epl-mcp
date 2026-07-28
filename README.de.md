@@ -163,6 +163,13 @@ Siehe [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
+## Sicherheit
+
+Siehe [SECURITY.de.md](SECURITY.de.md) ([English](SECURITY.md)) für die
+Sicherheitslage und die Meldung von Schwachstellen.
+
+---
+
 ## Lizenz
 
 MIT-Lizenz \u2014 siehe [LICENSE](LICENSE)
