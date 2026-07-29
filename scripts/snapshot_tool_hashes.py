@@ -29,7 +29,12 @@ async def _build_manifest() -> dict:
             "name": tool.name,
             "description": tool.description,
             "inputSchema": tool.input_schema,
-            "annotations": tool.annotations.model_dump() if tool.annotations else None,
+            "annotations": (
+                # by_alias keeps the wire spelling (readOnlyHint, ...):
+                # mcp_types 2.x renamed the fields to snake_case, so a bare
+                # dump changes this snapshot with no contract change.
+                tool.annotations.model_dump(by_alias=True) if tool.annotations else None
+            ),
         }
         canonical = json.dumps(definition, sort_keys=True, ensure_ascii=False)
         entries[tool.name] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
