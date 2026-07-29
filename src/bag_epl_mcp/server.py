@@ -26,8 +26,8 @@ from urllib.parse import urlsplit
 import httpcore
 import httpx
 import structlog
-from mcp.server.fastmcp import Context, FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -101,7 +101,7 @@ _http_client: httpx.AsyncClient | None = None
 
 
 @asynccontextmanager
-async def _lifespan(_server: FastMCP) -> AsyncIterator[dict]:
+async def _lifespan(_server: MCPServer) -> AsyncIterator[dict]:
     """Initialisiert den gepoolten HTTP-Client und raeumt ihn beim Shutdown ab."""
     global _http_client
     _http_client = _new_http_client()
@@ -115,7 +115,9 @@ async def _lifespan(_server: FastMCP) -> AsyncIterator[dict]:
 
 
 # ─────────────────────────── Server ────────────────────────────────────────────
-mcp = FastMCP("bag_epl_mcp", host=settings.host, port=settings.port, lifespan=_lifespan)
+# mcp 2.x: host/port are no longer constructor arguments (they were 1.x
+# FastMCP settings). uvicorn receives the bind address directly in main().
+mcp = MCPServer("bag_epl_mcp", lifespan=_lifespan)
 
 # ─────────────────────────── Konstanten ────────────────────────────────────────
 SL_BASE_URL       = "https://sl.bag.admin.ch"
@@ -508,7 +510,7 @@ class RechtskontextInput(BaseModel):
 
 # ─────────────────────────── Tools ─────────────────────────────────────────────
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True), structured_output=True)
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True), structured_output=True)
 async def epl_sl_suche(eingabe: SLSucheInput, ctx: Context | None = None) -> SLSucheEnvelope:
     """
     Suche in der Spezialitaetenliste (SL) nach kassenpflichtigen Medikamenten.
@@ -568,7 +570,7 @@ async def epl_sl_suche(eingabe: SLSucheInput, ctx: Context | None = None) -> SLS
         raise ToolError(_handle_error(e, "SL-Suche")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), structured_output=True)
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True)
 async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput, ctx: Context | None = None) -> GGSLEnvelope:
     """
     GGSL-Deckung bei Geburtsgebrechen pruefen.
@@ -621,7 +623,7 @@ async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput, ctx: Context | None = None
         raise ToolError(_handle_error(e, "GGSL-Abfrage")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), structured_output=True)
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True)
 async def epl_migel_suche(eingabe: MiGeLSucheInput, ctx: Context | None = None) -> MiGeLEnvelope:
     """
     Suche in der Mittel- und Gegenstaendeliste (MiGeL) nach Medizinprodukten.
@@ -670,7 +672,7 @@ async def epl_migel_suche(eingabe: MiGeLSucheInput, ctx: Context | None = None) 
         raise ToolError(_handle_error(e, "MiGeL-Suche")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), structured_output=True)
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True)
 async def epl_gesuchseingaenge(ctx: Context | None = None) -> GesuchseingaengeEnvelope:
     """
     Aktuelle Gesuchseingaenge fuer die Spezialitaetenliste abrufen.
@@ -714,7 +716,7 @@ async def epl_gesuchseingaenge(ctx: Context | None = None) -> GesuchseingaengeEn
         raise ToolError(_handle_error(e, "Gesuchseingaenge")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), structured_output=True)
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True)
 async def epl_rechtskontext(eingabe: RechtskontextInput, ctx: Context | None = None) -> RechtskontextEnvelope:
     """
     Rechtlichen Kontext zur Kassenpflicht liefern.
@@ -796,7 +798,7 @@ async def epl_rechtskontext(eingabe: RechtskontextInput, ctx: Context | None = N
         raise ToolError(_handle_error(e, "Rechtskontext")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), structured_output=True)
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True)
 async def epl_server_info(ctx: Context | None = None) -> ServerInfoEnvelope:
     """
     Serverstatus und API-Phaseninformation anzeigen.

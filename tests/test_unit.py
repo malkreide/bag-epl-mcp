@@ -12,7 +12,7 @@ import socket
 import httpx
 import pytest
 import respx
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 from bag_epl_mcp.server import (
     ALLOWED_HOSTS,
@@ -55,7 +55,7 @@ def _text(result):
 
 def _struct(result):
     """structuredContent einer Tool-Antwort (SDK-002)."""
-    return result.structuredContent
+    return result.structured_content
 
 
 # ─────────────────────────── Hilfsfunktionen ───────────────────────────────────
@@ -392,13 +392,13 @@ class TestToolAnnotations:
         tools = await mcp.list_tools()
         assert tools
         for t in tools:
-            assert t.annotations is not None and t.annotations.readOnlyHint is True
+            assert t.annotations is not None and t.annotations.read_only_hint is True
 
     @pytest.mark.asyncio
     async def test_sl_suche_open_world(self):
         tools = {t.name: t for t in await mcp.list_tools()}
-        assert tools["epl_sl_suche"].annotations.openWorldHint is True
-        assert tools["epl_server_info"].annotations.openWorldHint is False
+        assert tools["epl_sl_suche"].annotations.open_world_hint is True
+        assert tools["epl_server_info"].annotations.open_world_hint is False
 
     @pytest.mark.asyncio
     async def test_use_case_tag_in_beschreibungen(self):
@@ -474,12 +474,12 @@ class TestObservability:
 
     @pytest.mark.asyncio
     async def test_tools_akzeptieren_ctx_injection(self):
-        # FastMCP injiziert Context; defensiver Zugriff -> kein Crash.
+        # MCPServer injiziert Context; defensiver Zugriff -> kein Crash.
         from mcp.types import CallToolResult
         res = await mcp.call_tool("epl_server_info", {})
         if isinstance(res, CallToolResult):          # SDK-002: content + structuredContent
             text = res.content[0].text
-            assert res.structuredContent["protocol_version"] == PROTOCOL_VERSION
+            assert res.structured_content["protocol_version"] == PROTOCOL_VERSION
         elif isinstance(res, tuple):
             text = res[0][0].text
         else:

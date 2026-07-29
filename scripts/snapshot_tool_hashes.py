@@ -28,7 +28,7 @@ async def _build_manifest() -> dict:
         definition = {
             "name": tool.name,
             "description": tool.description,
-            "inputSchema": tool.inputSchema,
+            "inputSchema": tool.input_schema,
             "annotations": tool.annotations.model_dump() if tool.annotations else None,
         }
         canonical = json.dumps(definition, sort_keys=True, ensure_ascii=False)
