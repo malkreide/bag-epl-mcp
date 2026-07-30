@@ -84,6 +84,10 @@ class ServerSettings(BaseSettings):
     port: int = Field(default=8000, validation_alias=AliasChoices("MCP_PORT", "PORT"))
     # SDK-004: explizite Origin-Allow-List statt Wildcard.
     cors_origins: list[str] = ["https://claude.ai"]
+    # SEC-005, eingehend: Hostnamen, unter denen dieser Server erreichbar ist.
+    # Nötig für die Host/Origin-Prüfung des Transports, sobald nicht auf Loopback
+    # gebunden wird — der Prozess kann den Service-/DNS-Namen nicht erraten.
+    allowed_hosts: list[str] = []
     # OBS-006: OpenTelemetry-Tracing standardmaessig aktiv. Greift nur, wenn das
     # [otel]-Extra installiert ist (sonst stiller No-op); mit MCP_OTEL_ENABLED=0
     # deaktivierbar. Exporter-Endpoint via OTEL_EXPORTER_OTLP_ENDPOINT.
@@ -919,7 +923,46 @@ def epl_schulgesundheit_recherche(thema: str) -> str:
 
 # ─────────────────────────── Einstiegspunkt ────────────────────────────────────
 
-def _build_http_app():
+def build_transport_security(host: str, port: int):
+    """Host/Origin-Allow-List fuer den Streamable-HTTP-Transport (SEC-005).
+
+    Unter mcp 2.x ein per-App-Kwarg — und ihn weglassen ist nicht neutral: das
+    SDK leitet aus dem ``host``-Argument der App einen Default ab und aktiviert
+    bei loopback-artigem Wert automatisch ``127.0.0.1:*``. Da ``host`` selbst auf
+    ``127.0.0.1`` defaultet, traf das jedes Cloud-Deployment mit
+    ``MCP_HOST=0.0.0.0``: jede Anfrage unter einem echten Hostnamen bekam
+    HTTP 421, waehrend ``/healthz`` weiter 200 lieferte und es verdeckte. Vor der
+    Migration ging ``host`` an den ``FastMCP``-Konstruktor, wo dieselbe Logik den
+    echten Bind sah und den Schutz korrekt ausliess.
+
+    Rueckgabe ``None``, wenn keine Allow-List ableitbar ist — Nicht-Loopback-Bind
+    ohne ``MCP_ALLOWED_HOSTS``. Eine geratene Liste reproduziert genau dieses
+    421, der Aufrufer warnt stattdessen.
+    """
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    loopback = {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
+    if settings.allowed_hosts:
+        # Loopback bleibt fuer Container-Health-Checks und Debugging erreichbar.
+        hosts = set(settings.allowed_hosts) | loopback
+    elif host in ("127.0.0.1", "localhost", "::1"):
+        hosts = loopback | {f"{host}:{port}"}
+    else:
+        return None
+
+    # Konfigurierte CORS-Origins muessen auch die Transport-Pruefung passieren,
+    # sonst weist der Server genau die Browser-Clients ab, die CORS erlaubt —
+    # hier konkret claude.ai, der dokumentierte Browser-Use-Case.
+    origins = {o for o in settings.cors_origins if o != "*"}
+    origins |= {f"http://{h}" for h in hosts}
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=sorted(hosts),
+        allowed_origins=sorted(origins),
+    )
+
+
+def _build_http_app(host: str = "127.0.0.1", port: int = 8000):
     """
     Baut die Streamable-HTTP-Starlette-App fuer Cloud-Deployments.
 
@@ -928,6 +971,9 @@ def _build_http_app():
     * CORS-Middleware, damit Browser-Clients (claude.ai) den
       ``Mcp-Session-Id``-Header lesen koennen (SDK-004); Origins aus der
       expliziten Allow-List (kein Wildcard).
+
+    ``host`` muss die Adresse sein, an die uvicorn tatsaechlich bindet — siehe
+    :func:`build_transport_security`.
     """
     from starlette.middleware.cors import CORSMiddleware
     from starlette.requests import Request
@@ -937,7 +983,16 @@ def _build_http_app():
     async def _healthz(_request: Request) -> PlainTextResponse:
         return PlainTextResponse("ok")
 
-    app = mcp.streamable_http_app()
+    security = build_transport_security(host, port)
+    if security is None:
+        log.warning(
+            "dns_rebinding_protection_off",
+            host=host,
+            hint="Bind ist nicht Loopback und MCP_ALLOWED_HOSTS ist leer — setze "
+            "die Variable auf die Hostnamen, unter denen dieser Server erreichbar "
+            "ist, damit Host und Origin geprueft werden",
+        )
+    app = mcp.streamable_http_app(transport_security=security, host=host)
     app.router.routes.append(Route("/healthz", _healthz, methods=["GET"]))
     app.add_middleware(
         CORSMiddleware,
@@ -988,7 +1043,10 @@ def _run_http() -> None:
     """Streamable-HTTP-Transport fuer Cloud-Deployments (Render etc.) starten."""
     import uvicorn
 
-    app = _build_http_app()
+    # Der Bind geht an uvicorn *und* in die App: unter mcp 2.x leitet das SDK
+    # seine Host-Allow-List aus dem App-Argument ab, weglassen hiess also
+    # HTTP 421 auf jede echte Anfrage.
+    app = _build_http_app(settings.host, settings.port)
     if settings.otel_enabled:
         _init_otel(app)
     log.info("http_listen", host=settings.host, port=settings.port)

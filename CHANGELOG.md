@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Streamable-HTTP wies unter jedem echten Hostnamen mit 421 ab (SEC-005).**
+  `_build_http_app()` rief `mcp.streamable_http_app()` ohne `host` auf. Unter
+  mcp 2.x ist das kein neutraler Default: das SDK leitet daraus seine
+  Host-Allow-List ab und aktiviert bei loopback-artigem Wert automatisch
+  `127.0.0.1:*`. Da das Argument selbst auf `127.0.0.1` defaultet, traf das jedes
+  Cloud-Deployment mit `MCP_HOST=0.0.0.0`. Vor der Migration ging `host` an den
+  `FastMCP`-Konstruktor, wo dieselbe Logik den echten Bind sah und den Schutz
+  korrekt ausliess.
+
+  Besonders tückisch hier: `/healthz` ist bewusst von der Transport-Prüfung
+  ausgenommen (SCALE-004) und antwortete weiter mit 200. Ein Load-Balancer sah
+  also einen gesunden Server, der keine einzige MCP-Anfrage bedienen konnte.
+
+  Der Bind reist jetzt in die App, und eine echte Allow-List wird aus dem neuen
+  `MCP_ALLOWED_HOSTS` gebaut. Ohne diese Variable bleibt der Schutz auf einem
+  Nicht-Loopback-Bind bewusst aus und der Aufrufer warnt — eine geratene Liste
+  wäre genau der 421-Fall. `https://claude.ai` (CORS-Default) wird in die
+  Origin-Liste übernommen, sonst weist der Transport genau den Browser-Client ab,
+  für den die CORS-Konfiguration existiert.
+
+  13 neue Tests, darunter der tragende Fall „richtiger Hostname, falscher Port"
+  und einer, der die `/healthz`-Asymmetrie festhält — sie ist gewollt, war aber
+  auch der Grund, warum der Fehler verdeckt blieb. Mutationsgetestet: nimmt man
+  den `host`-Kwarg wieder weg, reproduziert der Test das 421.
+
+  Geprüft mit den wörtlichen CI-Kommandos: 70 passed / 8 deselected,
+  `ruff check src/ tests/` clean, Versions-Sync OK.
+
+
+### Fixed
+
 - **Capped `mcp` at `<2`.** `mcp` 2.0.0, published 2026-07-28, removed
   `mcp.server.fastmcp` — the module this server imports. With the previous
   unbounded `>=1.28.1` every fresh resolve picked 2.0.0 and failed at import
