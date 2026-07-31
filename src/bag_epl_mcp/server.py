@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BAG ePL MCP Server — v0.2.0
+BAG ePL MCP Server
 
 KI-nativer Zugang zur elektronischen Plattform Leistungen (ePL) des BAG:
   · Spezialitaetenliste (SL):   Kassenpflichtige Medikamente (KVG Art. 52)
@@ -32,6 +32,12 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from . import __version__
+
+# Wer fragt hier an? Ohne eigenen User-Agent geht der httpx-Default
+# hinaus und der Betreiber der Datenquelle sieht bloss eine Bibliothek.
+# Die Version stammt aus den Paket-Metadaten und kann nicht driften.
+USER_AGENT = f"bag-epl-mcp/{__version__} (+https://github.com/malkreide/bag-epl-mcp)"
 # ─────────────────────────── Logging (OBS-003/004) ─────────────────────────────
 # Strukturierte JSON-Logs ausschliesslich nach STDERR — STDOUT ist beim
 # stdio-Transport fuer den JSON-RPC-Stream reserviert (OBS-004).
@@ -343,7 +349,7 @@ def _new_http_client() -> httpx.AsyncClient:
         pool._network_backend = _PinnedNetworkBackend(backend)
     else:  # pragma: no cover - defensive
         log.warning("dns_pinning_unavailable")
-    return httpx.AsyncClient(timeout=HTTP_TIMEOUT, transport=transport)
+    return httpx.AsyncClient(timeout=HTTP_TIMEOUT, transport=transport, headers={"User-Agent": USER_AGENT})
 
 # ─────────────────────────── Enum ──────────────────────────────────────────────
 class ResponseFormat(StrEnum):
@@ -819,7 +825,11 @@ async def epl_server_info(ctx: Context | None = None) -> ServerInfoEnvelope:
         source="bag-epl-mcp",
         provenance=_provenance("bag-epl-mcp", "https://github.com/malkreide/bag-epl-mcp"),
         server="bag-epl-mcp",
-        version="0.2.0",
+        # Aus den Paket-Metadaten, nicht von Hand: hier stand "0.2.0",
+        # waehrend das Paket bei 1.0.1 war — eine Major-Version daneben, und
+        # zwar in der Antwort, die ein Client bekommt, wenn er den Server
+        # nach sich selbst fragt.
+        version=__version__,
         protocol_version=PROTOCOL_VERSION,
         license=OGD_LICENSE,
         phase="Phase 1 \u2014 XML/XLSX-Downloads + SL-Website-Zugriff",
