@@ -37,6 +37,7 @@ async def test_live_dns_pinning_tls_ok():
     # SEC-005: echter Request ueber den gepinnten Transport -> TLS muss gegen den
     # Hostnamen valide bleiben (kein SSL-Fehler), obwohl auf die IP verbunden wird.
     from bag_epl_mcp.server import _new_http_client
+
     async with _new_http_client() as client:
         resp = await client.get("https://www.fedlex.admin.ch/")
         assert resp.status_code is not None

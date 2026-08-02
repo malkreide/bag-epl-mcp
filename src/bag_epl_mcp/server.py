@@ -80,6 +80,7 @@ class ServerSettings(BaseSettings):
     Transport- und Host-Wahl erfolgt ausschliesslich ueber Env-Vars, damit die
     Server-Logik transport-agnostisch bleibt (keine globalen Schalter im Code).
     """
+
     model_config = SettingsConfigDict(env_prefix="MCP_", extra="ignore")
 
     # "stdio" (Default, lokal/Claude Desktop) | "streamable-http" (Cloud)
@@ -130,14 +131,14 @@ async def _lifespan(_server: MCPServer) -> AsyncIterator[dict]:
 mcp = MCPServer("bag_epl_mcp", lifespan=_lifespan)
 
 # ─────────────────────────── Konstanten ────────────────────────────────────────
-SL_BASE_URL       = "https://sl.bag.admin.ch"
-SL_API_URL        = "https://sl.bag.admin.ch/api"
-BAG_DOWNLOAD_URL  = "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife"
-GGSL_INFO_URL     = "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife/Arzneimittel/geburtsgebrechen-spezialitaetenliste.html"
-MIGEL_INFO_URL    = "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife/Mittel-und-Gegenstaendeliste.html"
-HTTP_TIMEOUT      = 30.0
-DEFAULT_LIMIT     = 20
-MAX_LIMIT         = 100
+SL_BASE_URL = "https://sl.bag.admin.ch"
+SL_API_URL = "https://sl.bag.admin.ch/api"
+BAG_DOWNLOAD_URL = "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife"
+GGSL_INFO_URL = "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife/Arzneimittel/geburtsgebrechen-spezialitaetenliste.html"
+MIGEL_INFO_URL = "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife/Mittel-und-Gegenstaendeliste.html"
+HTTP_TIMEOUT = 30.0
+DEFAULT_LIMIT = 20
+MAX_LIMIT = 100
 
 # ARCH-012: dokumentierte/„gepinnte" MCP-Protokoll-Version (Update-Policy: README).
 PROTOCOL_VERSION = "2025-06-18"
@@ -155,6 +156,7 @@ MatchType = Literal["exact", "fuzzy", "none"]
 
 class Provenance(BaseModel):
     """Herkunft und Lizenz einer Antwort (CH-004 / SDK-002)."""
+
     source: str
     url: str
     license: str = OGD_LICENSE
@@ -171,8 +173,10 @@ def _provenance(source: str, url: str) -> Provenance:
 # `structuredContent` zurueck — zusaetzlich zur kuratierten Markdown-Ausgabe im
 # `content`-Block (Hybrid, kein UX-Verlust). Siehe `_structured_result`.
 
+
 class BaseEnvelope(BaseModel):
     """Gemeinsame Huelle aller strukturierten Tool-Ausgaben (SDK-002 / CH-004)."""
+
     source: str
     provenance: Provenance
 
@@ -180,6 +184,7 @@ class BaseEnvelope(BaseModel):
 class SLTreffer(BaseModel):
     """Ein SL-Suchtreffer. ``extra='allow'``, da die Upstream-API zusaetzliche
     Felder liefern kann, sobald sie oeffentlich ist."""
+
     model_config = ConfigDict(extra="allow")
     name: str | None = None
 
@@ -259,18 +264,22 @@ def _structured_result(text: str, envelope: BaseModel) -> CallToolResult:
         structuredContent=envelope.model_dump(mode="json"),
     )
 
+
 # SEC-004 / SEC-021: Egress-Allow-List auf Code-Ebene (immutable).
 # Jeder ausgehende Request muss gegen diese Liste vertrauenswuerdiger
 # BAG-/Fedlex-Hosts validiert werden. Netzwerk-Layer-Egress (NetworkPolicy)
 # ergaenzt dies im Deployment.
-ALLOWED_HOSTS: frozenset[str] = frozenset({
-    "sl.bag.admin.ch",
-    "www.bag.admin.ch",
-    "www.fedlex.admin.ch",
-})
+ALLOWED_HOSTS: frozenset[str] = frozenset(
+    {
+        "sl.bag.admin.ch",
+        "www.bag.admin.ch",
+        "www.fedlex.admin.ch",
+    }
+)
 
 
 # ─────────────────────────── Egress-Guard (SEC-004/005/021) ─────────────────────
+
 
 def _assert_safe_url(url: str) -> None:
     """
@@ -325,8 +334,11 @@ class _PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
     async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
         pinned_ip = _resolve_and_validate(host, port)
         return await self._inner.connect_tcp(
-            pinned_ip, port, timeout=timeout,
-            local_address=local_address, socket_options=socket_options,
+            pinned_ip,
+            port,
+            timeout=timeout,
+            local_address=local_address,
+            socket_options=socket_options,
         )
 
     async def connect_unix_socket(self, *args, **kwargs):  # pragma: no cover - unused
@@ -349,16 +361,21 @@ def _new_http_client() -> httpx.AsyncClient:
         pool._network_backend = _PinnedNetworkBackend(backend)
     else:  # pragma: no cover - defensive
         log.warning("dns_pinning_unavailable")
-    return httpx.AsyncClient(timeout=HTTP_TIMEOUT, transport=transport, headers={"User-Agent": USER_AGENT})
+    return httpx.AsyncClient(
+        timeout=HTTP_TIMEOUT, transport=transport, headers={"User-Agent": USER_AGENT}
+    )
+
 
 # ─────────────────────────── Enum ──────────────────────────────────────────────
 class ResponseFormat(StrEnum):
     """Ausgabeformat fuer Tool-Antworten."""
+
     MARKDOWN = "markdown"
-    JSON     = "json"
+    JSON = "json"
 
 
 # ─────────────────────────── Hilfsfunktionen ───────────────────────────────────
+
 
 async def _http_get(url: str, params: dict | None = None) -> httpx.Response:
     """
@@ -380,8 +397,9 @@ def _handle_error(error: Exception, context: str = "") -> str:
 
     # OBS-002: vollstaendige Details NUR serverseitig (stderr) protokollieren,
     # niemals an den LLM zurueckgeben.
-    log.error("tool_error", context=context or None,
-              error_type=type(error).__name__, detail=str(error))
+    log.error(
+        "tool_error", context=context or None, error_type=type(error).__name__, detail=str(error)
+    )
 
     if isinstance(error, httpx.HTTPStatusError):
         status = error.response.status_code
@@ -413,6 +431,7 @@ def _paginate(total: int, limit: int, offset: int) -> dict:
 
 # ─────────────────────────── SL-Website-Suche (Phase 1) ───────────────────────
 
+
 async def _sl_website_suche(suchbegriff: str, limit: int = DEFAULT_LIMIT) -> dict:
     """
     Versucht, die SL-Website nach einem Medikament zu durchsuchen.
@@ -441,58 +460,75 @@ async def _sl_website_suche(suchbegriff: str, limit: int = DEFAULT_LIMIT) -> dic
 
 # ─────────────────────────── Input-Modelle ─────────────────────────────────────
 
+
 class SLSucheInput(BaseModel):
     """Eingabe fuer die Medikamentensuche in der Spezialitaetenliste."""
+
     model_config = ConfigDict(
         str_strip_whitespace=True, validate_assignment=True, extra="forbid", strict=True
     )
 
     suchbegriff: str = Field(
-        ..., min_length=1, max_length=200,
+        ...,
+        min_length=1,
+        max_length=200,
         description="Name oder Wirkstoff des Medikaments (z.B. 'Methylphenidat', 'Aspirin')",
     )
     limit: int = Field(
-        default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT,
+        default=DEFAULT_LIMIT,
+        ge=1,
+        le=MAX_LIMIT,
         description="Maximale Anzahl Ergebnisse (1-100)",
     )
     format: ResponseFormat = Field(
-        default=ResponseFormat.MARKDOWN, strict=False,
+        default=ResponseFormat.MARKDOWN,
+        strict=False,
         description="Ausgabeformat: 'markdown' oder 'json'",
     )
 
 
 class GGSLAbfrageInput(BaseModel):
     """Eingabe fuer GGSL-Abfrage bei Geburtsgebrechen."""
+
     model_config = ConfigDict(
         str_strip_whitespace=True, validate_assignment=True, extra="forbid", strict=True
     )
 
     geburtsgebrechen_nr: str = Field(
-        ..., min_length=1, max_length=10,
+        ...,
+        min_length=1,
+        max_length=10,
         description="Geburtsgebrechen-Nummer (z.B. '313' fuer Diabetes, '404' fuer Zystische Fibrose)",
     )
     format: ResponseFormat = Field(
-        default=ResponseFormat.MARKDOWN, strict=False,
+        default=ResponseFormat.MARKDOWN,
+        strict=False,
         description="Ausgabeformat: 'markdown' oder 'json'",
     )
 
 
 class MiGeLSucheInput(BaseModel):
     """Eingabe fuer die MiGeL-Suche."""
+
     model_config = ConfigDict(
         str_strip_whitespace=True, validate_assignment=True, extra="forbid", strict=True
     )
 
     suchbegriff: str = Field(
-        ..., min_length=1, max_length=200,
+        ...,
+        min_length=1,
+        max_length=200,
         description="Suchbegriff fuer Medizinprodukte (z.B. 'Rollstuhl', 'Hoergeraet')",
     )
     limit: int = Field(
-        default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT,
+        default=DEFAULT_LIMIT,
+        ge=1,
+        le=MAX_LIMIT,
         description="Maximale Anzahl Ergebnisse (1-100)",
     )
     format: ResponseFormat = Field(
-        default=ResponseFormat.MARKDOWN, strict=False,
+        default=ResponseFormat.MARKDOWN,
+        strict=False,
         description="Ausgabeformat: 'markdown' oder 'json'",
     )
 
@@ -504,23 +540,30 @@ class MiGeLSucheInput(BaseModel):
 
 class RechtskontextInput(BaseModel):
     """Eingabe fuer rechtliche Kontext-Abfrage."""
+
     model_config = ConfigDict(
         str_strip_whitespace=True, validate_assignment=True, extra="forbid", strict=True
     )
 
     frage: str = Field(
-        ..., min_length=1, max_length=500,
+        ...,
+        min_length=1,
+        max_length=500,
         description="Rechtliche Frage zur Kassenpflicht (z.B. 'Welche Gesetze regeln die SL-Aufnahme?')",
     )
     format: ResponseFormat = Field(
-        default=ResponseFormat.MARKDOWN, strict=False,
+        default=ResponseFormat.MARKDOWN,
+        strict=False,
         description="Ausgabeformat: 'markdown' oder 'json'",
     )
 
 
 # ─────────────────────────── Tools ─────────────────────────────────────────────
 
-@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True), structured_output=True)
+
+@mcp.tool(
+    annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True), structured_output=True
+)
 async def epl_sl_suche(eingabe: SLSucheInput, ctx: Context | None = None) -> SLSucheEnvelope:
     """
     Suche in der Spezialitaetenliste (SL) nach kassenpflichtigen Medikamenten.
@@ -580,7 +623,9 @@ async def epl_sl_suche(eingabe: SLSucheInput, ctx: Context | None = None) -> SLS
         raise ToolError(_handle_error(e, "SL-Suche")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True)
+@mcp.tool(
+    annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True
+)
 async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput, ctx: Context | None = None) -> GGSLEnvelope:
     """
     GGSL-Deckung bei Geburtsgebrechen pruefen.
@@ -633,7 +678,9 @@ async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput, ctx: Context | None = None
         raise ToolError(_handle_error(e, "GGSL-Abfrage")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True)
+@mcp.tool(
+    annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True
+)
 async def epl_migel_suche(eingabe: MiGeLSucheInput, ctx: Context | None = None) -> MiGeLEnvelope:
     """
     Suche in der Mittel- und Gegenstaendeliste (MiGeL) nach Medizinprodukten.
@@ -682,7 +729,9 @@ async def epl_migel_suche(eingabe: MiGeLSucheInput, ctx: Context | None = None) 
         raise ToolError(_handle_error(e, "MiGeL-Suche")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True)
+@mcp.tool(
+    annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True
+)
 async def epl_gesuchseingaenge(ctx: Context | None = None) -> GesuchseingaengeEnvelope:
     """
     Aktuelle Gesuchseingaenge fuer die Spezialitaetenliste abrufen.
@@ -726,8 +775,12 @@ async def epl_gesuchseingaenge(ctx: Context | None = None) -> GesuchseingaengeEn
         raise ToolError(_handle_error(e, "Gesuchseingaenge")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True)
-async def epl_rechtskontext(eingabe: RechtskontextInput, ctx: Context | None = None) -> RechtskontextEnvelope:
+@mcp.tool(
+    annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True
+)
+async def epl_rechtskontext(
+    eingabe: RechtskontextInput, ctx: Context | None = None
+) -> RechtskontextEnvelope:
     """
     Rechtlichen Kontext zur Kassenpflicht liefern.
 
@@ -808,7 +861,9 @@ async def epl_rechtskontext(eingabe: RechtskontextInput, ctx: Context | None = N
         raise ToolError(_handle_error(e, "Rechtskontext")) from e
 
 
-@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True)
+@mcp.tool(
+    annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False), structured_output=True
+)
 async def epl_server_info(ctx: Context | None = None) -> ServerInfoEnvelope:
     """
     Serverstatus und API-Phaseninformation anzeigen.
@@ -868,6 +923,7 @@ async def epl_server_info(ctx: Context | None = None) -> ServerInfoEnvelope:
 
 # ─────────────────────────── Resources ─────────────────────────────────────────
 
+
 @mcp.resource("epl://uebersicht")
 def epl_uebersicht() -> str:
     """Uebersicht ueber die ePL-Datenquellen und den aktuellen Funktionsumfang."""
@@ -904,6 +960,7 @@ def epl_rechtsrahmen() -> str:
 
 # ─────────────────────────── Prompts ───────────────────────────────────────────
 
+
 @mcp.prompt()
 def epl_kassenpflicht_check(medikament: str) -> str:
     """Strukturierter Workflow: Ist ein Medikament kassenpflichtig?"""
@@ -932,6 +989,7 @@ def epl_schulgesundheit_recherche(thema: str) -> str:
 
 
 # ─────────────────────────── Einstiegspunkt ────────────────────────────────────
+
 
 def build_transport_security(host: str, port: int):
     """Host/Origin-Allow-List fuer den Streamable-HTTP-Transport (SEC-005).

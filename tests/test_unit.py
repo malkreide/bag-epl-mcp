@@ -43,8 +43,10 @@ from bag_epl_mcp.server import (
 
 def _fake_getaddrinfo(ip: str):
     """getaddrinfo-Stub, das immer ``ip`` zurueckgibt."""
+
     def _inner(host, port, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (ip, port or 443))]
+
     return _inner
 
 
@@ -59,6 +61,7 @@ def _struct(result):
 
 
 # ─────────────────────────── Hilfsfunktionen ───────────────────────────────────
+
 
 class TestPaginateHelper:
     def test_erste_seite(self):
@@ -108,6 +111,7 @@ class TestHandleError:
 
 # ─────────────────────────── Input-Modelle (SEC-018) ──────────────────────────
 
+
 class TestSLSucheInput:
     def test_gueltige_eingabe(self):
         inp = SLSucheInput(suchbegriff="Aspirin")
@@ -142,7 +146,10 @@ class TestGGSLAbfrageInput:
         assert GGSLAbfrageInput(geburtsgebrechen_nr="313").geburtsgebrechen_nr == "313"
 
     def test_format_json(self):
-        assert GGSLAbfrageInput(geburtsgebrechen_nr="313", format=ResponseFormat.JSON).format == ResponseFormat.JSON
+        assert (
+            GGSLAbfrageInput(geburtsgebrechen_nr="313", format=ResponseFormat.JSON).format
+            == ResponseFormat.JSON
+        )
 
 
 class TestMiGeLSucheInput:
@@ -154,6 +161,7 @@ class TestMiGeLSucheInput:
 
 
 # ─────────────────────────── SL-Suche (Mocked) ────────────────────────────────
+
 
 class TestSLSucheMocked:
     @respx.mock
@@ -205,6 +213,7 @@ class TestSLSucheMocked:
 
 # ─────────────────────────── GGSL / MiGeL / Gesuche / Recht ────────────────────
 
+
 class TestGGSL:
     @pytest.mark.asyncio
     async def test_ggsl_markdown(self):
@@ -215,7 +224,9 @@ class TestGGSL:
 
     @pytest.mark.asyncio
     async def test_ggsl_json(self):
-        result = await epl_ggsl_abfrage(GGSLAbfrageInput(geburtsgebrechen_nr="404", format=ResponseFormat.JSON))
+        result = await epl_ggsl_abfrage(
+            GGSLAbfrageInput(geburtsgebrechen_nr="404", format=ResponseFormat.JSON)
+        )
         data = json.loads(_text(result))
         assert data == _struct(result)
         assert data["geburtsgebrechen_nr"] == "404" and "rechtsgrundlage" in data
@@ -232,7 +243,9 @@ class TestMiGeL:
 
     @pytest.mark.asyncio
     async def test_migel_json_envelope(self):
-        result = await epl_migel_suche(MiGeLSucheInput(suchbegriff="Hoergeraet", format=ResponseFormat.JSON))
+        result = await epl_migel_suche(
+            MiGeLSucheInput(suchbegriff="Hoergeraet", format=ResponseFormat.JSON)
+        )
         data = json.loads(_text(result))
         assert data == _struct(result)
         assert data["suchbegriff"] == "Hoergeraet"
@@ -258,7 +271,9 @@ class TestRechtskontext:
 
     @pytest.mark.asyncio
     async def test_rechtskontext_json(self):
-        result = await epl_rechtskontext(RechtskontextInput(frage="Rechtsgrundlage SL", format=ResponseFormat.JSON))
+        result = await epl_rechtskontext(
+            RechtskontextInput(frage="Rechtsgrundlage SL", format=ResponseFormat.JSON)
+        )
         data = json.loads(_text(result))
         assert data == _struct(result)
         assert len(data["gesetze"]) >= 3 and "wzw_kriterien" in data
@@ -280,6 +295,7 @@ class TestServerInfo:
 
 # ─────────────────────────── Egress-Guard (SEC-004/005/021) ───────────────────
 
+
 class TestEgressGuard:
     def test_https_und_erlaubter_host_ok(self):
         _assert_safe_url("https://sl.bag.admin.ch/api/search")
@@ -294,24 +310,32 @@ class TestEgressGuard:
 
     def test_private_ip_abgelehnt(self, monkeypatch):
         from bag_epl_mcp.server import _resolve_and_validate
+
         monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("127.0.0.1"))
         with pytest.raises(ToolError):
             _resolve_and_validate("sl.bag.admin.ch", 443)
 
     def test_metadata_ip_abgelehnt(self, monkeypatch):
         from bag_epl_mcp.server import _resolve_and_validate
-        monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("169.254.169.254"))
+
+        monkeypatch.setattr(
+            "bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("169.254.169.254")
+        )
         with pytest.raises(ToolError):
             _resolve_and_validate("www.bag.admin.ch", 443)
 
     def test_resolve_and_validate_gibt_pinned_ip(self, monkeypatch):
         from bag_epl_mcp.server import _resolve_and_validate
-        monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("93.184.216.34"))
+
+        monkeypatch.setattr(
+            "bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("93.184.216.34")
+        )
         assert _resolve_and_validate("sl.bag.admin.ch", 443) == "93.184.216.34"
 
     @pytest.mark.asyncio
     async def test_http_get_ruft_guard_auf(self):
         from bag_epl_mcp.server import _http_get
+
         with pytest.raises(ToolError):
             await _http_get("https://evil.example.com")
 
@@ -321,17 +345,23 @@ class TestEgressGuard:
 
 # ─────────────────────────── DNS-Pinning (SEC-005) ────────────────────────────
 
+
 class TestDnsPinning:
     """Die TCP-Verbindung wird auf die validierte IP gepinnt (SEC-005)."""
 
     @pytest.mark.asyncio
     async def test_pinned_backend_waehlt_validierte_ip(self, monkeypatch):
         from bag_epl_mcp.server import _PinnedNetworkBackend
-        monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("93.184.216.34"))
+
+        monkeypatch.setattr(
+            "bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("93.184.216.34")
+        )
         dialed = {}
 
         class _Inner:
-            async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+            async def connect_tcp(
+                self, host, port, timeout=None, local_address=None, socket_options=None
+            ):
                 dialed["host"] = host
                 dialed["port"] = port
                 return object()
@@ -344,6 +374,7 @@ class TestDnsPinning:
     @pytest.mark.asyncio
     async def test_pinned_backend_blockt_private_ip(self, monkeypatch):
         from bag_epl_mcp.server import _PinnedNetworkBackend
+
         monkeypatch.setattr("bag_epl_mcp.server.socket.getaddrinfo", _fake_getaddrinfo("10.0.0.5"))
 
         class _Inner:
@@ -355,6 +386,7 @@ class TestDnsPinning:
 
     def test_new_http_client_ist_gepinnt(self):
         from bag_epl_mcp.server import _new_http_client, _PinnedNetworkBackend
+
         client = _new_http_client()
         try:
             backend = client._transport._pool._network_backend
@@ -364,6 +396,7 @@ class TestDnsPinning:
 
 
 # ─────────────────────────── Settings & Transport ─────────────────────────────
+
 
 class TestSettings:
     def test_defaults_sicher(self):
@@ -385,6 +418,7 @@ class TestSettings:
 
 
 # ─────────────────────────── Tool-Annotations (ARCH-009) ───────────────────────
+
 
 class TestToolAnnotations:
     @pytest.mark.asyncio
@@ -410,10 +444,12 @@ class TestToolAnnotations:
 
 # ─────────────────────────── Lifespan / HTTP-App ──────────────────────────────
 
+
 class TestLifespan:
     @pytest.mark.asyncio
     async def test_lifespan_oeffnet_und_schliesst_client(self):
         import bag_epl_mcp.server as srv
+
         assert srv._http_client is None
         async with srv._lifespan(srv.mcp) as ctx:
             assert isinstance(srv._http_client, httpx.AsyncClient)
@@ -424,7 +460,10 @@ class TestLifespan:
     @pytest.mark.asyncio
     async def test_http_get_nutzt_pool_client(self):
         import bag_epl_mcp.server as srv
-        respx.get(f"{SL_API_URL}/search").mock(return_value=httpx.Response(200, json={"results": []}))
+
+        respx.get(f"{SL_API_URL}/search").mock(
+            return_value=httpx.Response(200, json={"results": []})
+        )
         async with srv._lifespan(srv.mcp):
             pooled = srv._http_client
             await srv._http_get(f"{SL_API_URL}/search")
@@ -437,6 +476,7 @@ class TestHttpApp:
         from starlette.testclient import TestClient
 
         from bag_epl_mcp.server import _build_http_app
+
         with TestClient(_build_http_app()) as c:
             yield c
 
@@ -459,6 +499,7 @@ class TestHttpApp:
 
 # ─────────────────────────── Observability (SDK-003 / OBS-003) ─────────────────
 
+
 class TestObservability:
     """Per-Call-Logging-Kontext + Context-Injection."""
 
@@ -466,6 +507,7 @@ class TestObservability:
         import structlog
 
         from bag_epl_mcp.server import _bind_call_context
+
         _bind_call_context(None, "epl_sl_suche")
         ctxvars = structlog.contextvars.get_contextvars()
         assert ctxvars["tool"] == "epl_sl_suche"
@@ -476,8 +518,9 @@ class TestObservability:
     async def test_tools_akzeptieren_ctx_injection(self):
         # MCPServer injiziert Context; defensiver Zugriff -> kein Crash.
         from mcp.types import CallToolResult
+
         res = await mcp.call_tool("epl_server_info", {})
-        if isinstance(res, CallToolResult):          # SDK-002: content + structuredContent
+        if isinstance(res, CallToolResult):  # SDK-002: content + structuredContent
             text = res.content[0].text
             assert res.structured_content["protocol_version"] == PROTOCOL_VERSION
         elif isinstance(res, tuple):
@@ -490,7 +533,14 @@ class TestObservability:
         import inspect
 
         from bag_epl_mcp import server as srv
-        for name in ("epl_sl_suche", "epl_ggsl_abfrage", "epl_migel_suche",
-                     "epl_gesuchseingaenge", "epl_rechtskontext", "epl_server_info"):
+
+        for name in (
+            "epl_sl_suche",
+            "epl_ggsl_abfrage",
+            "epl_migel_suche",
+            "epl_gesuchseingaenge",
+            "epl_rechtskontext",
+            "epl_server_info",
+        ):
             fn = getattr(srv, name).fn if hasattr(getattr(srv, name), "fn") else getattr(srv, name)
             assert "ctx" in inspect.signature(fn).parameters, f"{name}: kein ctx-Parameter"
