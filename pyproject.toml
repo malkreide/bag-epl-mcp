@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name        = "bag-epl-mcp"
-version     = "1.0.2"
+version     = "1.0.3"
 description = "MCP Server for the Swiss BAG electronic benefits platform (ePL): SL, GGSL, MiGeL"
 readme      = "README.md"
 license     = { file = "LICENSE" }
@@ -38,7 +38,7 @@ dependencies = [
     "httpcore>=1.0.9",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
-    "structlog>=25.5.0",
+    "structlog>=25.5.0,<27",
 ]
 
 [project.optional-dependencies]
