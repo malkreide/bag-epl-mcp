@@ -7,6 +7,128 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Behoben
+
+- **Der Fedlex-Verweis auf die GgV zeigte auf eine ELI, die es nicht gibt.**
+  Ausgegeben wurde `eli/cc/1986/40_40_40`; das Register der Fedlex fuehrt
+  unter SR 831.232.21 die ELI `eli/cc/1986/46_46_46` («Verordnung vom
+  9. Dezember 1985 ueber Geburtsgebrechen»).
+
+  Kein Statuscode haette das zeigen koennen. Die Fedlex-Oberflaeche ist eine
+  Single-Page-App und antwortet fuer **jede** ELI mit HTTP 200 — beide
+  Adressen liefern exakt 77 151 Byte. Wer den Link anklickte, bekam eine
+  Seite, die leer blieb, ohne Fehlermeldung.
+
+  Aufgeloest ueber den SPARQL-Endpunkt der Fedlex
+  (`jolux:historicalLegalId`). Kontrolle: Die erfundene SR-Nummer 999.999
+  liefert dort keinen Treffer, die Abfrage unterscheidet also. Alle vier
+  Rechtsverweise (KVG, KLV, IVG, GgV) stehen jetzt gegen das Register
+  geprueft im Code.
+
+- **Drei ausgegebene «offizielle Quellen» waren HTTP 404** —
+  `.../Arzneimittel/geburtsgebrechen-spezialitaetenliste.html`,
+  `.../Arzneimittel/gesuchseingaenge.html` und
+  `.../krankenversicherung-leistungen-tarife` (ohne `.html`). Fuer
+  `epl_ggsl_abfrage` und `epl_gesuchseingaenge` WAR dieser Link die ganze
+  Antwort: ausgeliefert wurde eine Sackgasse in der Aufmachung einer
+  Auskunft.
+
+  Kontrolle: Ein frei erfundener Pfad im BAG-Portal antwortet mit demselben
+  404 und demselben Titel «Error 404: Seite nicht gefunden» — die drei 404
+  sind also echt und keine Eigenheit des Portals.
+
+  **Ersatzadressen sind bewusst nicht geraten.** Die BAG-Navigation liegt
+  hinter JavaScript, und die Portalsuche ist selbst 404. Eine plausibel
+  gebaute URL waere genau der Fehler, den dieser Commit behebt. Ausgegeben
+  wird jetzt der Einstiegspunkt, der nachweislich mit 200 antwortet, samt
+  Hinweis, dass die frueher verlinkte Seite nicht mehr existiert.
+
+- **Aus einem JSON-Parserfehler wurde eine Aussage ueber das BAG.**
+  `_sl_website_suche` fing jeden Fehler in einem nackten `except Exception`
+  und antwortete «Die SL-Datenbank-API ist derzeit nicht oeffentlich
+  dokumentiert».
+
+  Gemessen worden ist das nie. `sl.bag.admin.ch/api/search` antwortet mit
+  **HTTP 200** und `text/html` — 51 KB Angular-Huelle. `raise_for_status()`
+  geht durch, `.json()` wirft, und der Rest war eine Behauptung ueber die
+  Veroeffentlichungspraxis einer Behoerde.
+
+  Kontrolle: Ein frei erfundener Pfad unter `/api/` liefert **byte-identisch
+  dasselbe** (51 710 B). Unter dieser Adresse liegt gar keine API. Die
+  Funktion prueft jetzt Statuscode und Content-Type und gibt zurueck, was
+  gemessen wurde — nicht, was jemand daraus geschlossen hat.
+
+  Nebenbefund, bewusst nicht verwertet: Die SL-Oberflaeche ruft intern
+  `https://epl.bag.admin.ch/api/sl/` auf, also einen anderen Host. Der
+  antwortet mit 401 — **auch auf erfundene Pfade**, weshalb daraus nicht
+  folgt, dass eine bestimmte Route existiert. Er steht deshalb nicht auf der
+  Egress-Allow-List; ohne pruefbaren Zugang waere das eine Freigabe auf
+  Verdacht.
+
+- **`epl_server_info` bewarb eine Faehigkeit ohne Codepfad.** «Phase 1 —
+  XML/XLSX-Downloads + SL-Website-Zugriff» stand in der Antwort, die ein
+  Client bekommt, wenn er den Server nach sich selbst fragt. Einen XML- oder
+  XLSX-Download gibt es nicht: Im ganzen Modul steht **ein** ausgehender
+  HTTP-Aufruf, und der geht an die SL-Suche.
+
+  Die Phasenbeschreibung nennt jetzt, was der Server tut. Fuenf der sechs
+  Werkzeuge fragen nichts ab, und ihre Antworten sagen das — vorher hiess es
+  «Die vollstaendige Liste ist beim BAG einsehbar», ohne offenzulegen, dass
+  gar nicht gesucht worden war.
+
+- **Sechs der acht Live-Tests konnten nicht bestehen.** Sie verglichen einen
+  String gegen ein `CallToolResult`; das ist ein Pydantic-Modell, `in`
+  iteriert darauf ueber `(Feldname, Wert)`-Paare, und der Vergleich ist damit
+  immer falsch.
+
+  Aufgefallen ist es nie, weil die CI `-m live` ausschliesst: Ein Test, der
+  nur ausserhalb der CI laeuft und dort immer rot ist, meldet niemandem
+  etwas.
+
+  Und selbst behoben haetten vier von ihnen nichts gezeigt. `assert "313" in
+  result` gegen ein Werkzeug, das die Eingabe in seine Vorlage schreibt;
+  `assert "Rollstuhl" in result` ebenso; `assert "Gesuchseingaenge" in
+  result` traf die Ueberschrift. Sie sicherten zu, dass ein Werkzeug seine
+  eigene Eingabe wiederholt.
+
+### Hinzugefuegt
+
+- **Aufgezeichnete Messungen statt Annahmen** — `tests/fixtures/`,
+  `scripts/record_fixtures.py`, `tests/fixture_data.py` und ein
+  `PROVENANCE.md` mit Quelle, Datum, Auswahlregel und SHA-256 je Datei.
+
+  Aufgezeichnet ist hier nicht die Antwort einer API — dieser Server hat
+  keine, aus der sich eine Fixture ziehen liesse. Aufgezeichnet ist der
+  Gegenstand, an dem seine Aussagen haengen: ob die Adressen, die er als
+  «offizielle Quelle» weitergibt, etwas liefern, und ob die Rechtsverweise
+  stimmen.
+
+  **Vier der Messungen sind Kontrollen**: ein erfundener Pfad unter
+  `sl.bag.admin.ch/api/` (liefert dieselbe Huelle — dort ist keine API), ein
+  erfundener Pfad im BAG-Portal (liefert 404 — die 404 oben sind echt), eine
+  erfundene ELI (liefert 200 — ein 200 dort ist wertlos) und eine erfundene
+  SR-Nummer (liefert nichts — die Registerabfrage unterscheidet). Ohne sie
+  belegte jede Messung nur, was ich bekommen habe.
+
+  Das Skript bricht ab, wenn eine Kontrolle nicht mehr traegt, wenn ein
+  Einstiegspunkt stirbt, wenn eine der toten Seiten zurueckkehrt oder wenn
+  ein Rechtsverweis vom Register abweicht. Ein Befund, der still veraltet,
+  ist schlimmer als keiner.
+
+- **`tests/test_quellen_vertrag.py`** — 18 Tests, die **in** der CI laufen.
+  Das ist der Punkt: Was dauerhaft gelten soll, gehoert nicht in eine Datei,
+  die die CI ueberspringt.
+
+- **`tests/test_live.py` neu geschrieben** — 12 Tests statt 8, jeder mit einer
+  Zusicherung, die fehlschlagen kann. Darunter zwei, die pruefen, dass die
+  toten Seiten tot bleiben und die Kontrollen weiter tragen: Kaeme eine Seite
+  zurueck, waere der Befund ueberholt und der Hinweis im Code falsch.
+
+  Gegengeprueft mit fuenf gezielten Rueckmutationen — falsche GgV-ELI, alte
+  XML/XLSX-Behauptung, toter Link zurueck in die Ausgabe, Behauptung statt
+  Messung in der SL-Antwort, und der `in`-Vergleich gegen das rohe
+  Rueckgabeobjekt. Alle fuenf machen die Suite rot.
+
 ## [1.0.3] - 2026-08-02
 
 ### Behoben

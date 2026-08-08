@@ -1,0 +1,61 @@
+{
+  "recorded_at": "2026-08-08",
+  "adressen": {
+    "sl_api_search": {
+      "url": "https://sl.bag.admin.ch/api/search?query=Aspirin",
+      "status": 200,
+      "content_type": "text/html",
+      "bytes": 51710,
+      "warum": "der einzige HTTP-Aufruf des Servers"
+    },
+    "kontrolle_sl_api_erfunden": {
+      "url": "https://sl.bag.admin.ch/api/diesen-pfad-gibt-es-nicht",
+      "status": 200,
+      "content_type": "text/html",
+      "bytes": 51710,
+      "warum": "KONTROLLE: erfundener Pfad unter derselben Adresse"
+    },
+    "sl_portal": {
+      "url": "https://sl.bag.admin.ch",
+      "status": 200,
+      "content_type": "text/html",
+      "bytes": 51710,
+      "warum": "die Weboberflaeche, auf die verwiesen wird"
+    },
+    "bag_leistungen": {
+      "url": "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife.html",
+      "status": 200,
+      "content_type": "text/html;charset=utf-8",
+      "bytes": 1006107,
+      "warum": "der Einstiegspunkt, der ausgegeben wird"
+    },
+    "bag_migel": {
+      "url": "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife/Mittel-und-Gegenstaendeliste.html",
+      "status": 200,
+      "content_type": "text/html;charset=utf-8",
+      "bytes": 1359644,
+      "warum": "die MiGeL-Seite, auf die verwiesen wird"
+    },
+    "bag_ggsl_tot": {
+      "url": "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife/Arzneimittel/geburtsgebrechen-spezialitaetenliste.html",
+      "status": 404,
+      "content_type": "text/html;charset=utf-8",
+      "bytes": 926493,
+      "warum": "die frueher ausgegebene GGSL-Seite"
+    },
+    "bag_gesuchseingaenge_tot": {
+      "url": "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife/Arzneimittel/gesuchseingaenge.html",
+      "status": 404,
+      "content_type": "text/html;charset=utf-8",
+      "bytes": 926473,
+      "warum": "die frueher ausgegebene Gesuchseingaenge-Seite"
+    },
+    "kontrolle_bag_erfunden": {
+      "url": "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/diesen-pfad-gibt-es-nicht.html",
+      "status": 404,
+      "content_type": "text/html;charset=utf-8",
+      "bytes": 926522,
+      "warum": "KONTROLLE: erfundener Pfad im BAG-Portal"
+    }
+  }
+}
