@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behoben
 
+- **Beide READMEs zeigten literale `\uXXXX`-Sequenzen statt Zeichen.** 37
+  Zeilen in `README.md`, 36 in `README.de.md`; insgesamt 507 Sequenzen, davon
+  allein 320 waagrechte Rahmenstriche. Auf GitHub stand dort sichtbar
+  `\u2192` statt `→` und im Architekturdiagramm eine Wand aus
+  `\u2500\u2500\u2500`.
+
+  Entstanden ist das unabhaengig von den Datentreue-Aenderungen — eine Datei
+  war irgendwann durch einen JSON-escapenden Pfad gelaufen. Aufgeloest sind
+  jetzt alle Sequenzen; ausserhalb des Diagramms ist der Text Zeichen fuer
+  Zeichen derselbe.
+
+- **Das Architekturdiagramm war schief, und das Escaping hat es verdeckt.**
+  Erst mit aufgeloesten Zeichen wurde sichtbar, dass die Kastenraender nicht
+  fluchten: Der linke Rand des mittleren Kastens stand mal auf Spalte 23, mal
+  auf 24, der rechte zwischen 56 und 58.
+
+  Solange dort `\u250c\u2500\u2500` stand, war es kein Diagramm, sondern
+  eine Zeichenkette — falsch ausrichten kann man nur, was man sieht. Der
+  Rahmen ist mit festen Spaltenbreiten neu gesetzt, in beiden Sprachen
+  identisch.
+
+
+### Behoben
+
 - **Der Fedlex-Verweis auf die GgV zeigte auf eine ELI, die es nicht gibt.**
   Ausgegeben wurde `eli/cc/1986/40_40_40`; das Register der Fedlex fuehrt
   unter SR 831.232.21 die ELI `eli/cc/1986/46_46_46` («Verordnung vom

@@ -9,7 +9,7 @@
 [![No Auth Required](https://img.shields.io/badge/auth-none%20required-brightgreen)](https://github.com/malkreide/bag-epl-mcp)
 ![CI](https://github.com/malkreide/bag-epl-mcp/actions/workflows/ci.yml/badge.svg)
 
-> MCP Server for the Swiss BAG electronic benefits platform (ePL) \u2014 Spezialitaetenliste, GGSL, MiGeL
+> MCP Server for the Swiss BAG electronic benefits platform (ePL) — Spezialitaetenliste, GGSL, MiGeL
 
 [\U0001f1e9\U0001f1ea Deutsche Version](README.de.md)
 
@@ -21,7 +21,7 @@
 
 ## Overview
 
-`bag-epl-mcp` enables AI models to answer questions about mandatory health insurance coverage in Switzerland \u2014 in natural language, grounded in real data.
+`bag-epl-mcp` enables AI models to answer questions about mandatory health insurance coverage in Switzerland — in natural language, grounded in real data.
 
 | List | Purpose | Legal basis |
 |------|---------|-------------|
@@ -30,7 +30,7 @@
 | **MiGeL** | Medical devices & aids | KLV Art. 20 |
 
 **Anchor query:** *"Is this medication covered by mandatory health insurance?"*
-\u2192 `epl_sl_suche`: Live lookup in the Spezialitaetenliste (SL)
+→ `epl_sl_suche`: Live lookup in the Spezialitaetenliste (SL)
 → [More use cases by audience →](EXAMPLES.md)
 
 ---
@@ -38,10 +38,10 @@
 ## Features
 
 - \U0001f48a **6 tools, 2 resources, 2 prompts** for Swiss health insurance data
-- \U0001f50d **`epl_sl_suche`** \u2014 search the Spezialitaetenliste for medications
-- \u2696\ufe0f **`epl_rechtskontext`** \u2014 legal context with Fedlex links
-- \U0001f513 **No API key required** \u2014 all data publicly accessible
-- \u2601\ufe0f **Dual transport** \u2014 stdio (Claude Desktop) + Streamable HTTP (cloud)
+- \U0001f50d **`epl_sl_suche`** — search the Spezialitaetenliste for medications
+- ⚖️ **`epl_rechtskontext`** — legal context with Fedlex links
+- \U0001f513 **No API key required** — all data publicly accessible
+- ☁️ **Dual transport** — stdio (Claude Desktop) + Streamable HTTP (cloud)
 - \U0001f4da **Prompt templates** for insurance coverage checks and school health queries
 
 ---
@@ -132,7 +132,7 @@ Or with `uvx`:
 
 **Render.com (recommended):**
 1. Push/fork the repository to GitHub
-2. On [render.com](https://render.com): New Web Service \u2192 connect GitHub repo
+2. On [render.com](https://render.com): New Web Service → connect GitHub repo
 3. Build command: `pip install -e ".[http]"`
 4. Set the following environment variables:
    - `MCP_TRANSPORT=streamable-http`
@@ -145,7 +145,7 @@ Or with `uvx`:
      and point `OTEL_EXPORTER_OTLP_ENDPOINT` at your collector. Set
      `MCP_OTEL_ENABLED=0` to disable.
 5. Start command: `python -m bag_epl_mcp.server`
-6. In claude.ai under Settings \u2192 MCP Servers, add: `https://your-app.onrender.com/mcp`
+6. In claude.ai under Settings → MCP Servers, add: `https://your-app.onrender.com/mcp`
 
 > **Security note:** the server exposes only public, read-only data and uses no
 > authentication. See [`docs/SECURITY.md`](docs/SECURITY.md) for the threat
@@ -181,57 +181,57 @@ Or with `uvx`:
 
 ```
                          bag-epl-mcp (FastMCP)
- \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510  MCP    \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510  HTTPS GET   \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510
- \u2502 MCP Client \u2502\u25c0\u2500\u2500\u2500\u2500\u2500\u2500\u25b6\u2502  tools (read-only)             \u2502\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u25b6\u2502 sl.bag.admin.ch  \u2502
- \u2502 (Claude    \u2502 stdio / \u2502   \u251c\u2500 epl_sl_suche              \u2502  egress      \u2502 www.bag.admin.ch \u2502
- \u2502  Desktop,  \u2502 Stream- \u2502   \u251c\u2500 epl_ggsl_abfrage          \u2502  allow-list  \u2502 www.fedlex...    \u2502
- \u2502  claude.ai)\u2502 able    \u2502   \u251c\u2500 epl_migel_suche           \u2502\u25c0\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2502 (public OGD)     \u2502
- \u2502            \u2502 HTTP    \u2502   \u251c\u2500 epl_gesuchseingaenge       \u2502  (no auth)   \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518
- \u2502            \u2502         \u2502   \u251c\u2500 epl_rechtskontext          \u2502
- \u2502            \u2502         \u2502   \u2514\u2500 epl_server_info            \u2502   structured JSON logs \u2192 stderr
- \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518         \u2502  resources: epl://uebersicht \u2026  \u2502
-                        \u2502  prompts:   epl_kassenpflicht\u2026  \u2502
-                        \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518
+ ┌────────────┐   MCP   ┌───────────────────────────────┐   HTTPS GET  ┌──────────────────┐
+ │ MCP Client │◀───────▶│  tools (read-only)            │─────────────▶│ sl.bag.admin.ch  │
+ │ (Claude    │ stdio / │   ├─ epl_sl_suche             │  egress      │ www.bag.admin.ch │
+ │  Desktop,  │ Stream- │   ├─ epl_ggsl_abfrage         │  allow-list  │ www.fedlex...    │
+ │  claude.ai)│ able    │   ├─ epl_migel_suche          │◀─────────────│ (public OGD)     │
+ │            │ HTTP    │   ├─ epl_gesuchseingaenge     │  (no auth)   └──────────────────┘
+ │            │         │   ├─ epl_rechtskontext        │
+ │            │         │   └─ epl_server_info          │   structured JSON logs → stderr
+ └────────────┘         │  resources: epl://uebersicht …│
+                        │  prompts:   epl_kassenpflicht…│
+                        └───────────────────────────────┘
 ```
 
 **Phase roadmap** (details in [`docs/ROADMAP.md`](docs/ROADMAP.md)):
 
 ```
-Phase 1 (current)  \u2192 legal context + entry points, no data retrieval
-Phase 2 (planned)  \u2192 FHIR/IDMP API, once publicly accessible
-Phase 3 (vision)   \u2192 MiGeL + AL via ePL-FHIR
+Phase 1 (current)  → legal context + entry points, no data retrieval
+Phase 2 (planned)  → FHIR/IDMP API, once publicly accessible
+Phase 3 (vision)   → MiGeL + AL via ePL-FHIR
 ```
 
 **What Phase 1 does, and what it does not.** Five of the six tools make no
-network request at all \u2014 there is exactly one outgoing HTTP call in the whole
+network request at all — there is exactly one outgoing HTTP call in the whole
 module. They return the legal basis and an entry point, and they now say so.
 The previous wording, "XML/XLSX downloads + SL website access", advertised a
 capability with no code path behind it; on 2026-08-08 it was removed rather
 than implemented, because the underlying source is not machine-readable.
 
 That one HTTP call goes to `sl.bag.admin.ch/api/search` and receives **HTTP 200
-with `text/html`** \u2014 the 51 KB Angular shell. A freely invented path under the
+with `text/html`** — the 51 KB Angular shell. A freely invented path under the
 same prefix returns the identical response, byte for byte: there is no API at
 that address. Previously the resulting JSON parse error was caught by a bare
 `except Exception` and turned into the claim "the SL database API is not
-publicly documented" \u2014 a statement about the BAG's publishing practice,
+publicly documented" — a statement about the BAG's publishing practice,
 derived from a parser error. The tool now reports what was measured.
 
 The SL front end calls `https://epl.bag.admin.ch/api/sl/` instead, on a
-different host. That host answers 401 without authentication \u2014 but it answers
+different host. That host answers 401 without authentication — but it answers
 401 for invented paths too, so this does **not** establish that any particular
 route exists. It is deliberately **not** on the egress allow-list: without
 verifiable access, adding it would be a grant on suspicion.
 
 **MCP protocol version:** `2025-06-18` (surfaced via `epl_server_info`). SDK
 updates are proposed monthly via Dependabot; the protocol version is reviewed on
-every `mcp` SDK bump \u2014 see the versioning policy in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+every `mcp` SDK bump — see the versioning policy in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ---
 
 ## Safety & Limits
 
-- **Read-only:** All tools perform HTTP GET requests only \u2014 no data is written, modified, or deleted.
+- **Read-only:** All tools perform HTTP GET requests only — no data is written, modified, or deleted.
 - **No personal data:** The server accesses public regulatory lists (SL, GGSL, MiGeL). No personally identifiable information (PII) is processed or stored.
 - **No medical advice:** This server provides informational access to regulatory data only. For medical or legal decisions, always consult the official BAG sources and qualified professionals.
 - **Rate limits:** The SL website (sl.bag.admin.ch) is a public Angular SPA; the server enforces a 30s timeout per request. Use `limit` parameters conservatively.
@@ -314,24 +314,24 @@ posture and how to report a vulnerability.
 
 ## License
 
-MIT License \u2014 see [LICENSE](LICENSE)
+MIT License — see [LICENSE](LICENSE)
 
 ---
 
 ## Author
 
-Hayal Oezkan \u00b7 [malkreide](https://github.com/malkreide)
+Hayal Oezkan · [malkreide](https://github.com/malkreide)
 
 ---
 
 ## Credits & Related Projects
 
-- **BAG Spezialitaetenliste:** [sl.bag.admin.ch](https://sl.bag.admin.ch) \u2014 Federal Office of Public Health
-- **KVG:** [SR 832.10](https://www.fedlex.admin.ch/eli/cc/1995/1328_1328_1328/de) \u2014 Health Insurance Act
-- **KLV:** [SR 832.112.31](https://www.fedlex.admin.ch/eli/cc/1995/4964_4964_4964/de) \u2014 Healthcare Benefits Ordinance
-- **Protocol:** [Model Context Protocol](https://modelcontextprotocol.io/) \u2014 Anthropic / Linux Foundation
-- **Related:** [fedlex-mcp](https://github.com/malkreide/fedlex-mcp) \u2014 Swiss federal law
-- **Related:** [swiss-cultural-heritage-mcp](https://github.com/malkreide/swiss-cultural-heritage-mcp) \u2014 Cultural heritage data
+- **BAG Spezialitaetenliste:** [sl.bag.admin.ch](https://sl.bag.admin.ch) — Federal Office of Public Health
+- **KVG:** [SR 832.10](https://www.fedlex.admin.ch/eli/cc/1995/1328_1328_1328/de) — Health Insurance Act
+- **KLV:** [SR 832.112.31](https://www.fedlex.admin.ch/eli/cc/1995/4964_4964_4964/de) — Healthcare Benefits Ordinance
+- **Protocol:** [Model Context Protocol](https://modelcontextprotocol.io/) — Anthropic / Linux Foundation
+- **Related:** [fedlex-mcp](https://github.com/malkreide/fedlex-mcp) — Swiss federal law
+- **Related:** [swiss-cultural-heritage-mcp](https://github.com/malkreide/swiss-cultural-heritage-mcp) — Cultural heritage data
 - **Portfolio:** [Swiss Public Data MCP Portfolio](https://github.com/malkreide)
 
 <!-- mcp-name: io.github.malkreide/bag-epl-mcp -->
