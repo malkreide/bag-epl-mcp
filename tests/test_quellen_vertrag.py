@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 
 import pytest
+from fixture_data import adresse, payload
 
 from bag_epl_mcp.server import (
     ALLOWED_HOSTS,
@@ -25,7 +26,6 @@ from bag_epl_mcp.server import (
     SL_API_URL,
     _sl_kein_api_zugang,
 )
-from tests.fixture_data import adresse, payload
 
 
 class TestAdressenDieDerServerAusgibt:
