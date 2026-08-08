@@ -133,9 +133,43 @@ mcp = MCPServer("bag_epl_mcp", lifespan=_lifespan)
 # ─────────────────────────── Konstanten ────────────────────────────────────────
 SL_BASE_URL = "https://sl.bag.admin.ch"
 SL_API_URL = "https://sl.bag.admin.ch/api"
-BAG_DOWNLOAD_URL = "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife"
-GGSL_INFO_URL = "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife/Arzneimittel/geburtsgebrechen-spezialitaetenliste.html"
-MIGEL_INFO_URL = "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/krankenversicherung-leistungen-tarife/Mittel-und-Gegenstaendeliste.html"
+# Die Adressen, die dieser Server als «offizielle Quelle» weitergibt.
+#
+# Am 2026-08-08 zum ersten Mal abgefragt — drei davon waren HTTP 404, und
+# zwar seit unbekannter Zeit: `.../krankenversicherung-leistungen-tarife`
+# (ohne `.html`), die GGSL-Seite und die Gesuchseingaenge-Seite. Fuer zwei
+# Werkzeuge WAR dieser Link die ganze Antwort; ausgeliefert wurde damit eine
+# Sackgasse in der Aufmachung einer Auskunft.
+#
+# Belegt ist das mit einer Kontrolle: Ein frei erfundener Pfad unter
+# `www.bag.admin.ch/bag/de/...` antwortet mit demselben 404 und demselben
+# Titel «Error 404: Seite nicht gefunden». Ohne sie hiesse der Befund nur
+# «ich habe eine 404 bekommen».
+#
+# Ersatzadressen sind bewusst NICHT geraten. Die BAG-Navigation liegt hinter
+# JavaScript und die Suche des Portals ist selbst 404; eine plausibel
+# gebaute URL waere genau der Fehler, den dieser Commit behebt. Statt eines
+# erfundenen Links steht in der Ausgabe jetzt, dass die Seite nicht mehr
+# erreichbar ist — `scripts/record_fixtures.py` misst das bei jedem Lauf neu.
+BAG_LEISTUNGEN_URL = (
+    "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/"
+    "krankenversicherung-leistungen-tarife.html"
+)
+MIGEL_INFO_URL = (
+    "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/"
+    "krankenversicherung-leistungen-tarife/Mittel-und-Gegenstaendeliste.html"
+)
+# Gemessen 404 am 2026-08-08. Bleiben als Konstante stehen, damit der
+# Recorder sie weiter prueft und ihre Rueckkehr auffaellt.
+GGSL_INFO_URL_TOT = (
+    "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/"
+    "krankenversicherung-leistungen-tarife/Arzneimittel/"
+    "geburtsgebrechen-spezialitaetenliste.html"
+)
+GESUCHSEINGAENGE_URL_TOT = (
+    "https://www.bag.admin.ch/bag/de/home/versicherungen/krankenversicherung/"
+    "krankenversicherung-leistungen-tarife/Arzneimittel/gesuchseingaenge.html"
+)
 HTTP_TIMEOUT = 30.0
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 100
@@ -435,27 +469,89 @@ def _paginate(total: int, limit: int, offset: int) -> dict:
 async def _sl_website_suche(suchbegriff: str, limit: int = DEFAULT_LIMIT) -> dict:
     """
     Versucht, die SL-Website nach einem Medikament zu durchsuchen.
-    Phase 1: Die interne API ist nicht dokumentiert — Fallback auf Info-Links.
-    Phase 2: Wird durch FHIR-API-Aufrufe ersetzt.
+
+    WAS HIER FRUEHER STAND, UND WARUM ES NICHT STIMMTE. Jeder Fehler landete
+    in einem nackten ``except Exception`` und wurde zur Aussage «Die
+    SL-Datenbank-API ist derzeit nicht oeffentlich dokumentiert».
+
+    Diese Aussage war nie gemessen. Am 2026-08-08 gegen die Quelle gehalten:
+    Der Pfad antwortet mit **HTTP 200** und ``text/html`` — 51 KB
+    Angular-Huelle. ``raise_for_status()`` geht durch, ``.json()`` wirft einen
+    ``JSONDecodeError``, und aus diesem Parserfehler wurde eine Aussage ueber
+    die Veroeffentlichungspraxis des BAG.
+
+    Die Kontrolle entscheidet: ``sl.bag.admin.ch/api/<erfundener-pfad>``
+    liefert **dieselbe** 200 mit derselben Huelle. Unter dieser Adresse liegt
+    also gar keine API, sondern die Single-Page-App — das kann kein
+    Statuscode zeigen, nur der Vergleich mit einem Pfad, den es sicher nicht
+    gibt.
+
+    Die App selbst ruft ``https://epl.bag.admin.ch/api/sl/`` auf, also einen
+    **anderen Host**. Der antwortet mit 401 — aber auch auf erfundene Pfade,
+    weshalb daraus NICHT folgt, dass eine bestimmte Route existiert. Er steht
+    bewusst nicht in :data:`ALLOWED_HOSTS`: Ohne pruefbaren Zugang waere das
+    eine Freigabe auf Verdacht.
+
+    Zurueck kommt jetzt, was gemessen wurde — nicht, was jemand daraus
+    geschlossen hat.
     """
     try:
         resp = await _http_get(
             f"{SL_API_URL}/search",
             params={"query": suchbegriff, "limit": limit},
         )
-        resp.raise_for_status()
+    except Exception as exc:  # Transport, DNS, Egress-Guard
+        log.debug("sl_suche_transport_fehler", fehler=type(exc).__name__)
+        return _sl_kein_api_zugang(
+            suchbegriff,
+            f"Die Anfrage an {SL_API_URL}/search kam nicht zustande ({type(exc).__name__}).",
+        )
+
+    content_type = resp.headers.get("content-type", "")
+    if resp.status_code != 200 or "json" not in content_type:
+        # Der haeufige Fall — und der irrefuehrende: 200 mit text/html.
+        return _sl_kein_api_zugang(
+            suchbegriff,
+            f"{SL_API_URL}/search antwortete mit HTTP {resp.status_code} und "
+            f"Content-Type «{content_type or 'ohne Angabe'}». Unter dieser "
+            "Adresse liegt die Single-Page-App, keine API — denselben Inhalt "
+            "liefert auch ein frei erfundener Pfad.",
+        )
+
+    try:
         return resp.json()
-    except Exception:
-        # Phase 1 Fallback: API nicht oeffentlich zugaenglich
-        return {
-            "hinweis": (
-                "Die SL-Datenbank-API ist derzeit nicht oeffentlich dokumentiert. "
-                "Bitte verwenden Sie den direkten Link fuer eine manuelle Suche."
-            ),
-            "direkt_link": f"{SL_BASE_URL}/#/search/{suchbegriff}",
-            "phase": "Phase 1 — Website-Zugriff",
-            "fhir_status": "FHIR/IDMP-API noch nicht publiziert (erwartet ~2025/2026)",
-        }
+    except ValueError:
+        return _sl_kein_api_zugang(
+            suchbegriff,
+            f"{SL_API_URL}/search meldete Content-Type «{content_type}», "
+            "lieferte aber kein gueltiges JSON.",
+        )
+
+
+def _sl_kein_api_zugang(suchbegriff: str, gemessen: str) -> dict:
+    """Die ehrliche Antwort, wenn kein maschinenlesbarer Zugang zustande kam.
+
+    ``gemessen`` sagt, was tatsaechlich beobachtet wurde. Der Unterschied zur
+    frueheren Fassung ist nicht kosmetisch: «nicht oeffentlich dokumentiert»
+    ist eine Behauptung ueber die Quelle, «HTTP 200 mit text/html» eine ueber
+    die eigene Messung. Nur die zweite laesst sich pruefen.
+    """
+    return {
+        "kein_api_zugang": True,
+        "gemessen": gemessen,
+        "hinweis": (
+            "Fuer diese Suche steht kein maschinenlesbarer Zugang zur "
+            "Verfuegung. Der direkte Link fuehrt zur manuellen Suche."
+        ),
+        "direkt_link": f"{SL_BASE_URL}/#/search/{suchbegriff}",
+        "phase": "Phase 1 — Website-Zugriff",
+        "fhir_status": (
+            "Die SL-Oberflaeche ruft intern https://epl.bag.admin.ch/api/sl/ "
+            "auf. Dieser Host antwortet ohne Anmeldung mit HTTP 401 — auch auf "
+            "erfundene Pfade, weshalb daraus nicht folgt, dass eine bestimmte "
+            "Route existiert."
+        ),
+    }
 
 
 # ─────────────────────────── Input-Modelle ─────────────────────────────────────
@@ -645,18 +741,23 @@ async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput, ctx: Context | None = None
 
         envelope = GGSLEnvelope(
             source="BAG GGSL",
-            provenance=_provenance("BAG GGSL", GGSL_INFO_URL),
+            provenance=_provenance("BAG GGSL", BAG_LEISTUNGEN_URL),
             geburtsgebrechen_nr=gg_nr,
-            status="Phase 1 \u2014 Statische Information",
+            status="Phase 1 \u2014 Statische Information, ohne Medikamentenliste",
             erklaerung=(
                 f"Die GGSL listet Medikamente, die bei Geburtsgebrechen Nr. {gg_nr} "
-                "von der IV uebernommen werden. Die vollstaendige Liste ist beim BAG einsehbar."
+                "von der IV uebernommen werden. Dieses Werkzeug ruft diese Liste "
+                "NICHT ab \u2014 es gibt Rechtsgrundlage und Einstiegspunkt aus, mehr "
+                "nicht. Die eingegebene Nummer wurde nicht geprueft."
             ),
-            link=GGSL_INFO_URL,
-            rechtsgrundlage="IVG Art. 13 / GgV (Geburtsgebrechen-Verordnung)",
+            link=BAG_LEISTUNGEN_URL,
+            rechtsgrundlage="IVG Art. 13 / GgV (Geburtsgebrechen-Verordnung), SR 831.232.21",
             hinweis=(
-                "Fuer die aktuelle Medikamentenliste zu diesem Geburtsgebrechen "
-                "konsultieren Sie bitte die offizielle BAG-Seite."
+                "Die frueher hier verlinkte BAG-Seite "
+                "(.../Arzneimittel/geburtsgebrechen-spezialitaetenliste.html) "
+                "antwortet seit mindestens dem 2026-08-08 mit HTTP 404. Statt "
+                "einer geratenen Ersatzadresse steht hier der Einstiegspunkt, "
+                "der nachweislich erreichbar ist."
             ),
         )
 
@@ -666,10 +767,12 @@ async def epl_ggsl_abfrage(eingabe: GGSLAbfrageInput, ctx: Context | None = None
 
         md = f"## GGSL-Abfrage: Geburtsgebrechen Nr. {gg_nr}\n\n"
         md += f"> {envelope.erklaerung}\n\n"
-        md += f"**Offizielle Quelle:** [BAG GGSL]({envelope.link})\n\n"
+        md += f"**Einstiegspunkt BAG:** [Leistungen und Tarife]({envelope.link})\n\n"
         md += f"**Rechtsgrundlage:** {envelope.rechtsgrundlage}\n\n"
         md += f"**Hinweis:** {envelope.hinweis}\n"
-        md += f"\n---\n*Quelle: BAG GGSL \u00b7 Lizenz: {OGD_LICENSE} \u00b7 {GGSL_INFO_URL}*\n"
+        md += (
+            f"\n---\n*Quelle: BAG GGSL \u00b7 Lizenz: {OGD_LICENSE} \u00b7 {BAG_LEISTUNGEN_URL}*\n"
+        )
         return _structured_result(md, envelope)
 
     except ToolError:
@@ -754,17 +857,21 @@ async def epl_gesuchseingaenge(ctx: Context | None = None) -> GesuchseingaengeEn
                 "periodisch vom BAG aktualisiert."
             ),
             link=f"{SL_BASE_URL}/#/applications",
-            direkt_link_bag=f"{BAG_DOWNLOAD_URL}/Arzneimittel/gesuchseingaenge.html",
+            direkt_link_bag=BAG_LEISTUNGEN_URL,
             hinweis=(
-                "Die vollstaendige Liste der Gesuchseingaenge ist auf sl.bag.admin.ch einsehbar. "
-                "Die API-basierte Abfrage wird mit Phase 2 (FHIR) verfuegbar."
+                "Dieses Werkzeug ruft die Liste NICHT ab; einsehbar ist sie auf "
+                "sl.bag.admin.ch. Die frueher hier verlinkte BAG-Seite "
+                "(.../Arzneimittel/gesuchseingaenge.html) antwortet seit "
+                "mindestens dem 2026-08-08 mit HTTP 404 und ist durch den "
+                "erreichbaren Einstiegspunkt ersetzt — nicht durch eine "
+                "geratene Adresse."
             ),
         )
 
         md = "## Gesuchseingaenge Spezialitaetenliste\n\n"
         md += f"> {envelope.beschreibung}\n\n"
         md += f"**SL-Portal:** [Gesuchseingaenge ansehen]({envelope.link})\n\n"
-        md += f"**BAG-Seite:** [Offizielle BAG-Seite]({envelope.direkt_link_bag})\n\n"
+        md += f"**Einstiegspunkt BAG:** [Leistungen und Tarife]({envelope.direkt_link_bag})\n\n"
         md += f"**Hinweis:** {envelope.hinweis}\n"
         md += f"\n---\n*Quelle: BAG Spezialitaetenliste · Lizenz: {OGD_LICENSE} · {SL_BASE_URL}*\n"
         return _structured_result(md, envelope)
@@ -822,9 +929,21 @@ async def epl_rechtskontext(
                 ),
                 Gesetz(
                     kuerzel="GgV",
-                    titel="Verordnung ueber Geburtsgebrechen",
+                    # Hier stand `eli/cc/1986/40_40_40`. Diese ELI fuehrt das
+                    # Register der Fedlex ueberhaupt nicht — und weil die
+                    # Fedlex-Oberflaeche eine Single-Page-App ist, die fuer
+                    # JEDE ELI mit HTTP 200 antwortet, konnte kein Statuscode
+                    # das zeigen: Der Link oeffnete eine Seite, die leer blieb.
+                    #
+                    # Aufgeloest ueber den SPARQL-Endpunkt der Fedlex am
+                    # 2026-08-08: `historicalLegalId "831.232.21"` fuehrt auf
+                    # `eli/cc/1986/46_46_46`, Titel «Verordnung vom
+                    # 9. Dezember 1985 ueber Geburtsgebrechen (GgV)».
+                    # Kontrolle: SR 999.999 liefert dort keinen Eintrag, die
+                    # Abfrage unterscheidet also.
+                    titel="Verordnung vom 9. Dezember 1985 ueber Geburtsgebrechen",
                     sr_nummer="SR 831.232.21",
-                    fedlex="https://www.fedlex.admin.ch/eli/cc/1986/40_40_40/de",
+                    fedlex="https://www.fedlex.admin.ch/eli/cc/1986/46_46_46/de",
                     relevante_artikel=["Anhang (Liste der Geburtsgebrechen)"],
                 ),
             ],
@@ -887,23 +1006,33 @@ async def epl_server_info(ctx: Context | None = None) -> ServerInfoEnvelope:
         version=__version__,
         protocol_version=PROTOCOL_VERSION,
         license=OGD_LICENSE,
-        phase="Phase 1 \u2014 XML/XLSX-Downloads + SL-Website-Zugriff",
+        # Hier stand \u00abPhase 1 \u2014 XML/XLSX-Downloads + SL-Website-Zugriff\u00bb.
+        # Einen XML- oder XLSX-Download gibt es in diesem Server nicht: Im
+        # ganzen Modul steht genau EIN ausgehender HTTP-Aufruf, und der geht
+        # an die SL-Suche. Beworben wurde damit eine Faehigkeit, die kein
+        # Codepfad hat \u2014 und zwar in der Antwort, die ein Client bekommt,
+        # wenn er den Server nach sich selbst fragt.
+        phase="Phase 1 \u2014 Rechtskontext und Einstiegspunkte, ohne Datenabruf",
         tools={
-            "epl_sl_suche": "Medikamentensuche in der Spezialitaetenliste (SL)",
-            "epl_ggsl_abfrage": "GGSL-Deckung bei Geburtsgebrechen pruefen",
-            "epl_migel_suche": "Medizinprodukte in der MiGeL suchen",
-            "epl_gesuchseingaenge": "SL-Gesuchseingaenge (Transparenz)",
-            "epl_rechtskontext": "Rechtliche Grundlagen zur Kassenpflicht",
+            "epl_sl_suche": (
+                "Spezialitaetenliste: Sucheinstieg. Ein maschinenlesbarer "
+                "Zugang steht nicht zur Verfuegung \u2014 die Antwort nennt, was "
+                "gemessen wurde."
+            ),
+            "epl_ggsl_abfrage": "Geburtsgebrechen: Rechtsgrundlage und Einstiegspunkt (keine Liste)",
+            "epl_migel_suche": "MiGeL: Rechtsgrundlage und Einstiegspunkt (keine Produktdaten)",
+            "epl_gesuchseingaenge": "SL-Gesuchseingaenge: Einstiegspunkt (keine Liste)",
+            "epl_rechtskontext": "Rechtliche Grundlagen zur Kassenpflicht (KVG/KLV/IVG/GgV)",
             "epl_server_info": "Serverstatus (dieses Tool)",
         },
         phasen={
-            "phase_1": "XML/XLSX-Downloads + SL-Website (aktuell)",
-            "phase_2": "FHIR/IDMP-API des BAG (~2025/2026)",
-            "phase_3": "MiGeL + AL via ePL-FHIR (2026/2027)",
+            "phase_1": "Rechtskontext + Einstiegspunkte (aktuell) \u2014 kein Datenabruf",
+            "phase_2": "FHIR/IDMP-API des BAG, sobald oeffentlich zugaenglich",
+            "phase_3": "MiGeL + AL via ePL-FHIR",
         },
         datenquellen={
-            "sl": f"{SL_BASE_URL} \u2014 Spezialitaetenliste",
-            "ggsl": GGSL_INFO_URL,
+            "sl": f"{SL_BASE_URL} \u2014 Spezialitaetenliste (Weboberflaeche)",
+            "bag_leistungen": BAG_LEISTUNGEN_URL,
             "migel": MIGEL_INFO_URL,
         },
     )

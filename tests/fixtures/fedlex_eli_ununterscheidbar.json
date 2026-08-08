@@ -1,0 +1,12 @@
+{
+  "ggsl_falsch_gewesen": {
+    "eli": "1986/40_40_40",
+    "status": 200,
+    "bytes": 77151
+  },
+  "ggsl_richtig": {
+    "eli": "1986/46_46_46",
+    "status": 200,
+    "bytes": 77151
+  }
+}

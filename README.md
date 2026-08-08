@@ -197,12 +197,31 @@ Or with `uvx`:
 **Phase roadmap** (details in [`docs/ROADMAP.md`](docs/ROADMAP.md)):
 
 ```
-Phase 1 (current)  \u2192 SL website access + structured legal info
-Phase 2 (planned)  \u2192 FHIR/IDMP API (BAG, ~2025/2026)
-Phase 3 (vision)   \u2192 MiGeL + AL via ePL-FHIR (2026/2027)
+Phase 1 (current)  \u2192 legal context + entry points, no data retrieval
+Phase 2 (planned)  \u2192 FHIR/IDMP API, once publicly accessible
+Phase 3 (vision)   \u2192 MiGeL + AL via ePL-FHIR
 ```
 
-The server is **already useful today** and will seamlessly upgrade when the BAG publishes its FHIR API.
+**What Phase 1 does, and what it does not.** Five of the six tools make no
+network request at all \u2014 there is exactly one outgoing HTTP call in the whole
+module. They return the legal basis and an entry point, and they now say so.
+The previous wording, "XML/XLSX downloads + SL website access", advertised a
+capability with no code path behind it; on 2026-08-08 it was removed rather
+than implemented, because the underlying source is not machine-readable.
+
+That one HTTP call goes to `sl.bag.admin.ch/api/search` and receives **HTTP 200
+with `text/html`** \u2014 the 51 KB Angular shell. A freely invented path under the
+same prefix returns the identical response, byte for byte: there is no API at
+that address. Previously the resulting JSON parse error was caught by a bare
+`except Exception` and turned into the claim "the SL database API is not
+publicly documented" \u2014 a statement about the BAG's publishing practice,
+derived from a parser error. The tool now reports what was measured.
+
+The SL front end calls `https://epl.bag.admin.ch/api/sl/` instead, on a
+different host. That host answers 401 without authentication \u2014 but it answers
+401 for invented paths too, so this does **not** establish that any particular
+route exists. It is deliberately **not** on the egress allow-list: without
+verifiable access, adding it would be a grant on suspicion.
 
 **MCP protocol version:** `2025-06-18` (surfaced via `epl_server_info`). SDK
 updates are proposed monthly via Dependabot; the protocol version is reviewed on
@@ -217,6 +236,8 @@ every `mcp` SDK bump \u2014 see the versioning policy in [`docs/ROADMAP.md`](doc
 - **No medical advice:** This server provides informational access to regulatory data only. For medical or legal decisions, always consult the official BAG sources and qualified professionals.
 - **Rate limits:** The SL website (sl.bag.admin.ch) is a public Angular SPA; the server enforces a 30s timeout per request. Use `limit` parameters conservatively.
 - **Data freshness:** Phase 1 tools link to live BAG sources. No caching is performed by this server.
+- **Links are measured, not assumed:** the addresses handed out as "official source" are re-checked by `scripts/record_fixtures.py` on every run, together with a control request to an invented path. Two BAG pages previously handed out (`.../Arzneimittel/geburtsgebrechen-spezialitaetenliste.html` and `.../Arzneimittel/gesuchseingaenge.html`) answered HTTP 404 on 2026-08-08 and were replaced by the entry point that verifiably resolves — not by a guessed replacement URL.
+- **Legal references are checked against the register:** every SR number the server prints is resolved to its ELI via the Fedlex SPARQL endpoint. This detour is necessary: Fedlex's web front end is a single-page app that answers HTTP 200 with the same byte count for *any* ELI, including an invented one. That is how a wrong GgV link (`eli/cc/1986/40_40_40`, no register entry) went unnoticed; the correct ELI is `eli/cc/1986/46_46_46`.
 - **Data licence (OGD-CH):** The underlying BAG/Fedlex data is Swiss Open Government Data, licensed **CC BY 4.0**. Tool outputs carry a `source` / `provenance` block (JSON) or a source-and-licence footer (Markdown) so attribution is preserved.
 - **Structured output:** every tool returns both a human-readable Markdown/JSON block (`content`) and a typed `structuredContent` validated against a per-tool output schema, so MCP clients can consume results programmatically without parsing prose.
 - **Terms of service:** Data is subject to the ToS of [sl.bag.admin.ch](https://sl.bag.admin.ch), [bag.admin.ch](https://www.bag.admin.ch), and [fedlex.admin.ch](https://www.fedlex.admin.ch).
@@ -227,12 +248,48 @@ every `mcp` SDK bump \u2014 see the versioning policy in [`docs/ROADMAP.md`](doc
 ## Testing
 
 ```bash
-# Unit tests (no API key required)
+# Unit + contract tests (no network) — this is what CI runs
 PYTHONPATH=src pytest tests/ -m "not live"
 
-# Integration tests (live API calls)
-pytest tests/ -m "live"
+# Live tests against the real BAG/Fedlex sources
+PYTHONPATH=src pytest tests/ -m "live"
+
+# Re-record the measurements (writes tests/fixtures/ + PROVENANCE.md)
+PYTHONPATH=src python scripts/record_fixtures.py
 ```
+
+**100 tests** — 88 offline, 12 against the live sources.
+
+### Why there is a contract test file as well as live tests
+
+Until 2026-08-08 six of the eight live tests **could not pass**. They compared
+a string against a tool's return value:
+
+```python
+assert "BAG ePL MCP Server" in result   # result is a CallToolResult
+```
+
+`CallToolResult` is a Pydantic model; `in` iterates over `(field, value)`
+pairs, so the comparison is always false. Nobody noticed, because CI excludes
+`-m live` — a test that only runs outside CI and is always red there reports to
+no one.
+
+And even fixed, four of them would have proved nothing: `assert "313" in
+result` against a tool that writes its own input into a template, `assert
+"Rollstuhl" in result` likewise. They asserted that a tool echoes its input —
+which is precisely what those tools do.
+
+What must hold permanently therefore lives in `tests/test_quellen_vertrag.py`,
+which runs **inside** CI against the recorded measurements under
+`tests/fixtures/`. `PROVENANCE.md` records source, date, selection rule and
+SHA-256 for each one.
+
+Four of the recorded measurements are **controls** — an invented path under
+`sl.bag.admin.ch/api/`, an invented path in the BAG portal, an invented ELI,
+and an invented SR number. Without them each measurement would only show what
+*we* received, not what the source actually holds. The recorder aborts if a
+control stops discriminating, if a live entry point dies, if one of the dead
+pages returns, or if a legal reference drifts from the register.
 
 ---
 
