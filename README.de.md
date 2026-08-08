@@ -11,7 +11,7 @@
 [![Kein API-Schluessel](https://img.shields.io/badge/Auth-keiner%20erforderlich-brightgreen)](https://github.com/malkreide/bag-epl-mcp)
 ![CI](https://github.com/malkreide/bag-epl-mcp/actions/workflows/ci.yml/badge.svg)
 
-> MCP-Server fuer die elektronische Plattform Leistungen (ePL) des BAG \u2014 Spezialitaetenliste, GGSL, MiGeL
+> MCP-Server fuer die elektronische Plattform Leistungen (ePL) des BAG — Spezialitaetenliste, GGSL, MiGeL
 
 ### Demo
 
@@ -21,7 +21,7 @@
 
 ## Uebersicht
 
-`bag-epl-mcp` ermoeglicht KI-Modellen, Fragen zur obligatorischen Krankenpflegeversicherung in natuerlicher Sprache zu beantworten \u2014 verankert in echten Daten.
+`bag-epl-mcp` ermoeglicht KI-Modellen, Fragen zur obligatorischen Krankenpflegeversicherung in natuerlicher Sprache zu beantworten — verankert in echten Daten.
 
 | Liste | Zweck | Rechtsgrundlage |
 |-------|-------|-----------------|
@@ -29,8 +29,8 @@
 | **GGSL** | Medikamente bei Geburtsgebrechen (IV) | IVG Anhang |
 | **MiGeL** | Medizinprodukte und Hilfsmittel | KLV Art. 20 |
 
-**Anker-Abfrage:** *\u00abIst dieses Medikament kassenpflichtig?\u00bb*
-\u2192 `epl_sl_suche`: Direktabfrage in der Spezialitaetenliste (SL)
+**Anker-Abfrage:** *«Ist dieses Medikament kassenpflichtig?»*
+→ `epl_sl_suche`: Direktabfrage in der Spezialitaetenliste (SL)
 → [Weitere Anwendungsbeispiele nach Zielgruppe →](EXAMPLES.md)
 
 ---
@@ -38,10 +38,10 @@
 ## Funktionen
 
 - \U0001f48a **6 Tools, 2 Resources, 2 Prompts** fuer Schweizer Gesundheitsdaten
-- \U0001f50d **`epl_sl_suche`** \u2014 Medikamentensuche in der Spezialitaetenliste
-- \u2696\ufe0f **`epl_rechtskontext`** \u2014 Rechtliche Grundlagen mit Fedlex-Links
-- \U0001f513 **Kein API-Schluessel erforderlich** \u2014 alle Daten oeffentlich zugaenglich
-- \u2601\ufe0f **Dualer Transport** \u2014 stdio (Claude Desktop) + Streamable HTTP (Cloud)
+- \U0001f50d **`epl_sl_suche`** — Medikamentensuche in der Spezialitaetenliste
+- ⚖️ **`epl_rechtskontext`** — Rechtliche Grundlagen mit Fedlex-Links
+- \U0001f513 **Kein API-Schluessel erforderlich** — alle Daten oeffentlich zugaenglich
+- ☁️ **Dualer Transport** — stdio (Claude Desktop) + Streamable HTTP (Cloud)
 - \U0001f4da **Prompt-Vorlagen** fuer Kassenpflicht-Checks und Schulgesundheit
 
 ---
@@ -106,44 +106,46 @@ MCP_TRANSPORT=streamable-http MCP_HOST=0.0.0.0 MCP_PORT=8000 \
 
 ```
                          bag-epl-mcp (FastMCP)
- \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510  MCP    \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510  HTTPS GET   \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510
- \u2502 MCP-Client \u2502\u25c0\u2500\u2500\u2500\u2500\u2500\u2500\u25b6\u2502  Tools (nur lesend)            \u2502\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u25b6\u2502 sl.bag.admin.ch  \u2502
- \u2502 (Claude    \u2502 stdio / \u2502   \u251c\u2500 epl_sl_suche              \u2502  Egress-     \u2502 www.bag.admin.ch \u2502
- \u2502  Desktop,  \u2502 Stream- \u2502   \u251c\u2500 epl_ggsl_abfrage          \u2502  Allow-List  \u2502 www.fedlex...    \u2502
- \u2502  claude.ai)\u2502 able    \u2502   \u251c\u2500 epl_migel_suche           \u2502\u25c0\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2502 (oeffentl. OGD)  \u2502
- \u2502            \u2502 HTTP    \u2502   \u251c\u2500 epl_gesuchseingaenge       \u2502  (keine Auth)\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518
- \u2502            \u2502         \u2502   \u251c\u2500 epl_rechtskontext          \u2502
- \u2502            \u2502         \u2502   \u2514\u2500 epl_server_info            \u2502   strukturierte JSON-Logs \u2192 stderr
- \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518         \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518
+ ┌────────────┐   MCP   ┌───────────────────────────────┐   HTTPS GET  ┌──────────────────┐
+ │ MCP-Client │◀───────▶│  Tools (nur lesend)           │─────────────▶│ sl.bag.admin.ch  │
+ │ (Claude    │ stdio / │   ├─ epl_sl_suche             │  Egress-     │ www.bag.admin.ch │
+ │  Desktop,  │ Stream- │   ├─ epl_ggsl_abfrage         │  Allow-List  │ www.fedlex...    │
+ │  claude.ai)│ able    │   ├─ epl_migel_suche          │◀─────────────│ (oeffentl. OGD)  │
+ │            │ HTTP    │   ├─ epl_gesuchseingaenge     │  (keine Auth)└──────────────────┘
+ │            │         │   ├─ epl_rechtskontext        │
+ │            │         │   └─ epl_server_info          │   strukturierte JSON-Logs → stderr
+ └────────────┘         │  resources: epl://uebersicht …│
+                        │  prompts:   epl_kassenpflicht…│
+                        └───────────────────────────────┘
 ```
 
 **Phasenplan** (Details in [`docs/ROADMAP.md`](docs/ROADMAP.md)):
 
 ```
-Phase 1 (aktuell)  \u2192 Rechtskontext + Einstiegspunkte, ohne Datenabruf
-Phase 2 (geplant)  \u2192 FHIR/IDMP-API, sobald oeffentlich zugaenglich
-Phase 3 (Vision)   \u2192 MiGeL + AL via ePL-FHIR
+Phase 1 (aktuell)  → Rechtskontext + Einstiegspunkte, ohne Datenabruf
+Phase 2 (geplant)  → FHIR/IDMP-API, sobald oeffentlich zugaenglich
+Phase 3 (Vision)   → MiGeL + AL via ePL-FHIR
 ```
 
-**Was Phase 1 tut \u2014 und was nicht.** Fuenf der sechs Werkzeuge stellen
+**Was Phase 1 tut — und was nicht.** Fuenf der sechs Werkzeuge stellen
 ueberhaupt keine Netzwerkanfrage; im ganzen Modul steht genau ein ausgehender
 HTTP-Aufruf. Sie geben Rechtsgrundlage und Einstiegspunkt zurueck, und sie
-sagen das jetzt auch. Die fruehere Beschreibung \u00abXML/XLSX-Downloads +
-SL-Website-Zugriff\u00bb bewarb eine Faehigkeit ohne Codepfad; sie wurde am
+sagen das jetzt auch. Die fruehere Beschreibung «XML/XLSX-Downloads +
+SL-Website-Zugriff» bewarb eine Faehigkeit ohne Codepfad; sie wurde am
 2026-08-08 gestrichen statt umgesetzt, weil die zugrundeliegende Quelle nicht
 maschinenlesbar ist.
 
 Dieser eine Aufruf geht an `sl.bag.admin.ch/api/search` und bekommt **HTTP 200
-mit `text/html`** \u2014 die 51 KB grosse Angular-Huelle. Ein frei erfundener Pfad
+mit `text/html`** — die 51 KB grosse Angular-Huelle. Ein frei erfundener Pfad
 unter demselben Praefix liefert byte-identisch dasselbe: Dort liegt keine API.
 Bisher fing ein nacktes `except Exception` den daraus folgenden
-JSON-Parserfehler und machte daraus die Aussage \u00abDie SL-Datenbank-API ist
-derzeit nicht oeffentlich dokumentiert\u00bb \u2014 eine Behauptung ueber die
+JSON-Parserfehler und machte daraus die Aussage «Die SL-Datenbank-API ist
+derzeit nicht oeffentlich dokumentiert» — eine Behauptung ueber die
 Veroeffentlichungspraxis des BAG, hergeleitet aus einem Parserfehler. Das
 Werkzeug nennt jetzt, was gemessen wurde.
 
 Die SL-Oberflaeche ruft stattdessen `https://epl.bag.admin.ch/api/sl/` auf,
-also einen anderen Host. Der antwortet ohne Anmeldung mit 401 \u2014 aber auch auf
+also einen anderen Host. Der antwortet ohne Anmeldung mit 401 — aber auch auf
 erfundene Pfade, weshalb daraus **nicht** folgt, dass eine bestimmte Route
 existiert. Er steht bewusst **nicht** auf der Egress-Allow-List: Ohne
 pruefbaren Zugang waere das eine Freigabe auf Verdacht.
@@ -155,7 +157,7 @@ werden monatlich via Dependabot vorgeschlagen.
 
 ## Sicherheit & Grenzen
 
-- **Nur lesend:** Alle Tools fuehren ausschliesslich HTTP-GET-Anfragen aus \u2014 keine Daten werden geschrieben, geaendert oder geloescht.
+- **Nur lesend:** Alle Tools fuehren ausschliesslich HTTP-GET-Anfragen aus — keine Daten werden geschrieben, geaendert oder geloescht.
 - **Keine Personendaten:** Der Server greift auf oeffentliche Regulierungslisten (SL, GGSL, MiGeL) zu. Es werden keine personenbezogenen Daten (PII) verarbeitet oder gespeichert.
 - **Keine medizinische Beratung:** Dieser Server bietet rein informativen Zugang zu regulatorischen Daten. Fuer medizinische oder rechtliche Entscheidungen konsultieren Sie die offiziellen BAG-Quellen und qualifizierte Fachpersonen.
 - **Rate Limits:** Die SL-Website (sl.bag.admin.ch) ist eine oeffentliche Angular-SPA; der Server erzwingt ein 30s-Timeout pro Anfrage. Verwenden Sie `limit`-Parameter konservativ.
@@ -237,22 +239,22 @@ Sicherheitslage und die Meldung von Schwachstellen.
 
 ## Lizenz
 
-MIT-Lizenz \u2014 siehe [LICENSE](LICENSE)
+MIT-Lizenz — siehe [LICENSE](LICENSE)
 
 ---
 
 ## Autor
 
-Hayal Oezkan \u00b7 [malkreide](https://github.com/malkreide)
+Hayal Oezkan · [malkreide](https://github.com/malkreide)
 
 ---
 
 ## Credits & Verwandte Projekte
 
-- **BAG Spezialitaetenliste:** [sl.bag.admin.ch](https://sl.bag.admin.ch) \u2014 Bundesamt fuer Gesundheit
-- **KVG:** [SR 832.10](https://www.fedlex.admin.ch/eli/cc/1995/1328_1328_1328/de) \u2014 Krankenversicherungsgesetz
-- **KLV:** [SR 832.112.31](https://www.fedlex.admin.ch/eli/cc/1995/4964_4964_4964/de) \u2014 Krankenpflege-Leistungsverordnung
-- **Protokoll:** [Model Context Protocol](https://modelcontextprotocol.io/) \u2014 Anthropic / Linux Foundation
-- **Verwandt:** [fedlex-mcp](https://github.com/malkreide/fedlex-mcp) \u2014 Schweizer Bundesrecht
-- **Verwandt:** [swiss-cultural-heritage-mcp](https://github.com/malkreide/swiss-cultural-heritage-mcp) \u2014 Kulturerbe-Daten
+- **BAG Spezialitaetenliste:** [sl.bag.admin.ch](https://sl.bag.admin.ch) — Bundesamt fuer Gesundheit
+- **KVG:** [SR 832.10](https://www.fedlex.admin.ch/eli/cc/1995/1328_1328_1328/de) — Krankenversicherungsgesetz
+- **KLV:** [SR 832.112.31](https://www.fedlex.admin.ch/eli/cc/1995/4964_4964_4964/de) — Krankenpflege-Leistungsverordnung
+- **Protokoll:** [Model Context Protocol](https://modelcontextprotocol.io/) — Anthropic / Linux Foundation
+- **Verwandt:** [fedlex-mcp](https://github.com/malkreide/fedlex-mcp) — Schweizer Bundesrecht
+- **Verwandt:** [swiss-cultural-heritage-mcp](https://github.com/malkreide/swiss-cultural-heritage-mcp) — Kulturerbe-Daten
 - **Portfolio:** [Swiss Public Data MCP Portfolio](https://github.com/malkreide)
