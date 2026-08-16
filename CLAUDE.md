@@ -40,23 +40,20 @@ Ein Codex-Review auf einem PR wird beantwortet oder behoben, nie ignoriert.
 
 ## Teil 2 — Repo-spezifisch (bag-epl-mcp)
 
-### ruff-Version
+**ruff: eine Quelle.** Der Pin `0.16.1` steht in `pyproject.toml` — und
+**nicht** mehr als eigener Install-Schritt in der CI.
 
-- CI (`.github/workflows/ci.yml`): `ruff==0.16.1` (gepinnt).
-- `pyproject.toml` `[dev]`: `ruff>=0.15.15` (untere Schranke, kein Pin).
-- `.pre-commit-config.yaml`: **existiert nicht.**
-
-**Befund:** Es gibt keine zweite gepinnte Quelle, die mit der CI übereinstimmen
-könnte. `pip install -e ".[dev]"` installiert lokal die neuste ruff-Version —
-also gerade nicht die der CI. Lokal deshalb explizit
-`pip install ruff==0.16.1` fahren.
+Der CI-Schritt lief nach dem Install der Abhängigkeiten und überschrieb sie.
+Eine Abweichung im Pin konnte deshalb in der CI gar nicht auffallen, sondern
+nur lokal — wo niemand sie erwartet. Ein manuelles Nachinstallieren von ruff
+vor den Gates ist damit nicht mehr nötig und wäre schädlich: Es würde eine
+spätere Anhebung hier stillschweigend überstimmen.
 
 ### Gate-Befehle (wörtlich aus `ci.yml`, Reihenfolge wie dort)
 
 ```bash
 pip install -e ".[dev]"
 PYTHONPATH=src pytest tests/ -m "not live"
-pip install ruff==0.16.1
 ruff check src/ tests/ scripts/
 ruff format --check src/ tests/ scripts/
 python scripts/check_version_sync.py
