@@ -77,11 +77,17 @@ Matrix: Python 3.11, 3.12, 3.13. Trigger: push/PR gegen `main`.
 
 ### Live-Tests
 
-Kein geplanter Workflow. `.github/workflows/` enthält nur `ci.yml`
-(push/pull_request) und `publish.yml` (`release: published`) — kein
-`schedule:`/cron. Live-Tests sind ausschliesslich per `-m "not live"`
-ausgeschlossen (Marker in `pyproject.toml`, Tests in `tests/test_live.py`).
+**Geplanter Workflow vorhanden — DRIFT-005 ist erfüllt.**
+`.github/workflows/live-tests.yml` fährt `PYTHONPATH=src pytest tests/ -m live`
+wöchentlich (`cron: "13 4 * * 1"`) plus `workflow_dispatch`, ordnet das
+Ergebnis über `scripts/classify_live_run.py` ein statt aus dem Exit-Code zu
+schliessen und öffnet bzw. schliesst dafür ein Issue (`issues: write`). Der
+`-m "not live"`-Ausschluss der PR-CI ist damit korrekt und bleibt so.
+`schedule` greift nur auf dem Default-Branch: Änderungen an der Datei wirken
+erst nach dem Merge, vorher von Hand auslösen.
 
-**Befund: DRIFT-005** — Ausschluss ohne geplanten Lauf. Eine Änderung an der
-Quelle fällt erst produktiv auf. Live-Tests vor jedem Release von Hand fahren:
-`PYTHONPATH=src pytest tests/ -m live`.
+Hier stand das Gegenteil — «Kein geplanter Workflow», `.github/workflows/`
+enthalte nur `ci.yml` und `publish.yml`, Befund DRIFT-005. Das war einmal
+richtig und ist es nicht mehr: `live-tests.yml` kam dazu, der Absatz nicht
+mit. **Ein Befund in Prosa altert still.** Wer die Regel prüft, zählt die
+Dateien in `.github/workflows/`, statt diesen Absatz zu lesen — auch diesen.
