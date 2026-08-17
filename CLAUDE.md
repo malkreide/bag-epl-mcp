@@ -70,6 +70,7 @@ schlägt den Pin, ohne dass der Install etwas meldet.
 
 ```bash
 pip install -e ".[dev]"
+python scripts/check_ruff_pin.py
 PYTHONPATH=src pytest tests/ -m "not live"
 ruff check src/ tests/ scripts/
 ruff format --check src/ tests/ scripts/
