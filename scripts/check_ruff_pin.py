@@ -1,4 +1,4 @@
-"""Prueft, dass das aufgerufene ruff die in pyproject.toml gepinnte Version ist.
+"""Prueft, dass jedes erreichbare ruff die in pyproject.toml gepinnte Version ist.
 
 Der Sinn eines lokalen Gates ist, dass es dasselbe Ergebnis liefert wie die CI.
 Ein anderes ruff meldet Abweichungen, die niemand verursacht hat, und
@@ -6,9 +6,13 @@ verschweigt umgekehrt welche, die die CI dann rot machen.
 
 Der Pin steht an genau einer Stelle und wird beim Install auch gezogen. Er
 wirkt trotzdem nicht, wenn frueher im PATH ein anderes ruff liegt: `ruff`
-nimmt dann jenes Binary, und der Install meldet dazu nichts. Dieses Skript
-ist der Ausgleich - es vergleicht, was `ruff --version` sagt, mit dem, was
-pyproject.toml verlangt.
+nimmt dann jenes Binary, und der Install meldet dazu nichts.
+
+Geprueft werden beide Wege, auf denen ein Gate ruff erreichen kann, denn im
+Portfolio kommen beide vor: `ruff …` nimmt das Binary aus dem PATH,
+`python -m ruff …` das installierte Modul. Sie koennen auseinanderlaufen, und
+dann haengt das Ergebnis davon ab, welche Form gerade jemand tippt. Was nicht
+vorhanden ist, wird uebersprungen; fehlen beide, ist das ein Fehler.
 
 Verwendung:
     python scripts/check_ruff_pin.py     # exit 1 bei Abweichung
@@ -16,8 +20,7 @@ Verwendung:
 Zwei Einschraenkungen, die diese Datei zwischen den Repos kopierbar halten:
 
   - Nur Standardbibliothek, und kein tomllib: fuenf Server im Portfolio
-    fahren ihre CI auch auf Python 3.10, wo es tomllib nicht gibt. Fuer ein
-    Feld lohnt weder eine Abhaengigkeit noch ein Versions-Zweig.
+    fahren ihre CI auch auf Python 3.10, wo es tomllib nicht gibt.
   - Keine Zeile ueber 88 Zeichen und keine impliziten String-Verkettungen
     ueber mehrere Zeilen; lange Meldungen bekommen eine lokale Variable. Im
     Portfolio stehen line-length 88, 100, 110 und 120 nebeneinander, und
@@ -62,30 +65,45 @@ def pinned_version() -> str:
     return found[0]
 
 
-def installed_version() -> str:
-    """Die Version, die ein Aufruf von `ruff` tatsaechlich liefert."""
+def _ask(call: list[str]) -> str | None:
+    """Version, die dieser Aufruf meldet - oder None, wenn es ihn nicht gibt."""
+    try:
+        done = subprocess.run(call, capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    match = _REPORTED.search(done.stdout)
+    return match.group(1) if match else None
+
+
+def reachable() -> list[tuple[str, str]]:
+    """Jedes ruff, das ein Gate treffen kann: (Aufruf, gemeldete Version)."""
+    found = []
     binary = shutil.which("ruff")
-    if binary is None:
-        fehlt = "ruff ist nicht im PATH. Dev-Umgebung installieren:"
-        raise SystemExit(f"{fehlt}\n{_INSTALL}")
-    call = [binary, "--version"]
-    out = subprocess.run(call, capture_output=True, text=True, check=True).stdout
-    match = _REPORTED.search(out)
-    if match is None:
-        raise SystemExit(f"Version aus 'ruff --version' nicht lesbar: {out!r}")
-    return match.group(1)
+    if binary is not None:
+        version = _ask([binary, "--version"])
+        if version is not None:
+            found.append((binary, version))
+    module = _ask([sys.executable, "-m", "ruff", "--version"])
+    if module is not None:
+        found.append((f"{sys.executable} -m ruff", module))
+    return found
 
 
 def main() -> int:
     want = pinned_version()
-    have = installed_version()
-    if want == have:
-        print(f"Ruff-Pin OK ({want}; geprueft: PATH gegen pyproject.toml)")
+    found = reachable()
+    if not found:
+        fehlt = "Kein ruff erreichbar - weder im PATH noch als Modul."
+        raise SystemExit(f"{fehlt} Dev-Umgebung installieren:\n{_INSTALL}")
+    wrong = [(call, have) for call, have in found if have != want]
+    if not wrong:
+        print(f"Ruff-Pin OK ({want}; geprueft: {len(found)} Aufrufweg(e))")
         return 0
-    kopf = f"ruff-Version weicht ab: aufgerufen wird {have}, gepinnt ist {want}."
-    wo = f"Verwendet wird {shutil.which('ruff')}."
-    folge = "Die Gates fallen damit lokal anders aus als in der CI."
-    print(f"{kopf}\n{wo} {folge} Angleichen mit:\n{_INSTALL}", file=sys.stderr)
+    print(f"ruff-Version weicht ab. Gepinnt ist {want}.", file=sys.stderr)
+    for call, have in wrong:
+        print(f"  {call} meldet {have}", file=sys.stderr)
+    folge = "Die Gates fallen damit anders aus als in der CI. Angleichen mit:"
+    print(f"{folge}\n{_INSTALL}", file=sys.stderr)
     return 1
 
 
