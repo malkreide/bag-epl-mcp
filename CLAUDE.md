@@ -22,6 +22,12 @@ den Remote-HEAD und endet mit 0.
 Ein veralteter Klon erzeugt eine rote CI, deren Ursache nicht im Diff steht.
 Am 3.8.2026 zweimal passiert — beide Male fehlten genau die Commits, die
 das Gate einführten, an dem der Branch scheiterte.
+
+In `bag-epl-mcp` nimmt ein SessionStart-Hook diesen Handgriff ab (Teil 2).
+In den übrigen Repos des Portfolios nicht — dort bleibt der Befehl oben
+Handarbeit, und auch hier gilt er weiter, sobald man ohne Claude Code
+arbeitet: Der Hook läuft am Sessionstart, nicht im blanken Terminal.
+
 Gates lokal fahren, mit der GEPINNTEN ruff-Version aus der CI. Eine andere
 Version meldet Abweichungen, die niemand verursacht hat.
 
@@ -79,6 +85,29 @@ python scripts/check_version_sync.py
 ```
 
 Matrix: Python 3.11, 3.12, 3.13. Trigger: push/PR gegen `main`.
+
+### Klon-Aktualität — der Hook macht das
+
+`.claude/hooks/session-start.sh`, registriert in `.claude/settings.json`,
+meldet beim Sessionstart, wie viele Commits der Stand hinter
+`origin/<Default-Branch>` liegt, und schweigt bei 0. Gemerged in PR #44.
+
+Begründung, Zeitschranken und Gegenproben stehen in
+`.claude/hooks/README.md` und im Skriptkopf — hier bewusst **nicht**
+wiederholt. Was an zwei Orten steht, altert an einem davon still.
+
+Zwei Eigenschaften, die beim Ändern nicht kaputtgehen dürfen:
+
+- **Er blockiert nie.** Jeder Fehlerpfad endet still mit Exit-Code 0;
+  deshalb steht dort bewusst kein `set -e`. Ein Hook, der bei Netzproblemen
+  die Arbeit anhält, wird abgeschaltet und schützt danach gar nichts.
+- **Er rät den Default-Branch nicht.** Ist er nicht ermittelbar, schweigt
+  der Hook, statt `main` anzunehmen — die Annahme, gegen die dieser Hook
+  überhaupt gebaut wurde.
+
+Wer prüfen will, ob das noch stimmt, liest `.claude/settings.json` und
+führt `.claude/hooks/session-start.sh` von Hand aus, statt diesem Absatz zu
+glauben.
 
 ### Live-Tests
 
