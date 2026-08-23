@@ -150,7 +150,10 @@ erfundene Pfade, weshalb daraus **nicht** folgt, dass eine bestimmte Route
 existiert. Er steht bewusst **nicht** auf der Egress-Allow-List: Ohne
 pruefbaren Zugang waere das eine Freigabe auf Verdacht.
 
-**MCP-Protokoll-Version:** `2025-06-18` (via `epl_server_info`). SDK-Updates
+**MCP-Protokoll-Version:** `2025-11-25` (via `epl_server_info`) — die
+Obergrenze des `initialize`-Handshakes, aus dem SDK abgeleitet statt hier ein
+zweites Mal hingeschrieben. Beide Aeren stehen unter
+[MCP-Protokollversion](#mcp-protokollversion). SDK-Updates
 werden monatlich via Dependabot vorgeschlagen.
 
 ---
@@ -167,6 +170,35 @@ werden monatlich via Dependabot vorgeschlagen.
 - **Datenlizenz (OGD-CH):** Die zugrundeliegenden BAG-/Fedlex-Daten sind Swiss Open Government Data, lizenziert unter **CC BY 4.0**. Tool-Antworten fuehren einen `source`/`provenance`-Block (JSON) bzw. eine Quellen-/Lizenz-Fusszeile (Markdown), damit die Attribution erhalten bleibt.
 - **Nutzungsbedingungen:** Daten unterliegen den Nutzungsbedingungen von [sl.bag.admin.ch](https://sl.bag.admin.ch), [bag.admin.ch](https://www.bag.admin.ch) und [fedlex.admin.ch](https://www.fedlex.admin.ch).
 - **Keine Garantie:** Community-Projekt, nicht affiliiert mit dem BAG oder einer Behoerde. Verfuegbarkeit haengt von den Upstream-Quellen ab.
+
+---
+
+## MCP-Protokollversion
+
+Dieser Server bedient **zwei Protokoll-Aeren** ueber denselben Endpunkt. Die
+erste Anfrage einer Verbindung entscheidet, welche gilt; ein spaeterer Anspruch
+aus der jeweils anderen Aera wird abgewiesen.
+
+| Aera | Revision | Wer sie erreicht |
+|---|---|---|
+| `initialize`-Handshake | `2024-11-05` … **`2025-11-25`** | Was heutige Clients sprechen. Der Server antwortet mit der angefragten Revision — oder mit der Obergrenze `2025-11-25`, wenn die Anfrage etwas Neueres verlangt. |
+| Pro-Request-Envelope | **`2026-07-28`** | Eine Anfrage mit dem `2026-07-28`-`_meta`-Envelope oeffnet eine moderne Verbindung. |
+
+Beide Revisionen sind in
+[`tests/test_protocol_version.py`](tests/test_protocol_version.py) gepinnt und
+werden gegen das installierte SDK geprueft; ein Dependabot-Bump von `mcp` kann
+also keine der beiden still verschieben. Dieser Server baut keine ASGI-App, durch die sich ein `initialize`
+schicken liesse; das Gate sichert deshalb die SDK-Konstanten statt einer
+gemessenen Antwort — die schwaechere Form, benannt statt verschwiegen.
+
+Zu beachten: `LATEST_PROTOCOL_VERSION` im SDK ist ein Alias auf die **moderne**
+Aera, nicht auf die Handshake-Aera — wer nur dagegen pinnt, laesst genau die
+Aera frei wandern, die heutige Clients tatsaechlich aushandeln.
+
+**Update-Politik.** Faellt das Gate, die Konstante nicht blind nachziehen: erst
+das Spec-Changelog zwischen den beiden Revisionen lesen, pruefen, ob sich der
+Server weiterhin richtig verhaelt, dann Konstante, diesen Abschnitt, `README.md`
+und [`CHANGELOG.md`](CHANGELOG.md) gemeinsam bewegen.
 
 ---
 

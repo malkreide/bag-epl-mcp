@@ -30,6 +30,7 @@ from mcp.server.caching import CacheHint
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
+from mcp.types.version import LATEST_HANDSHAKE_VERSION
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -202,8 +203,21 @@ HTTP_TIMEOUT = 30.0
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 100
 
-# ARCH-012: dokumentierte/„gepinnte" MCP-Protokoll-Version (Update-Policy: README).
-PROTOCOL_VERSION = "2025-06-18"
+# ARCH-012: die Revision, die `epl_server_info` an Aufrufer meldet.
+#
+# Hier stand `"2025-06-18"` — drei Revisionen alt, und zwar in der Antwort, die
+# ein Client bekommt, wenn er den Server nach sich selbst fragt. Ein Literal an
+# dieser Stelle ist eine zweite Wahrheit neben dem SDK, und zweite Wahrheiten
+# driften: gemeldet wurde eine Revision, die dieser Server seit dem Umstieg auf
+# `mcp` 2.x nie mehr aushandelt.
+#
+# Deshalb abgeleitet statt geschrieben. `LATEST_HANDSHAKE_VERSION` und nicht
+# `LATEST_PROTOCOL_VERSION`: Letzteres ist ein Alias auf die moderne
+# Envelope-Aera, waehrend ein Client, der `epl_server_info` ueber den
+# `initialize`-Handshake erreicht, genau diese Obergrenze ausgehandelt hat.
+# `tests/test_protocol_version.py` pinnt beide Aeren, die Ableitung kann also
+# nicht unbemerkt wandern.
+PROTOCOL_VERSION = LATEST_HANDSHAKE_VERSION
 # CH-004: OGD-CH-Standardlizenz fuer die zugrundeliegenden BAG-Open-Data.
 OGD_LICENSE = "CC BY 4.0"
 
