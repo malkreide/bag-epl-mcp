@@ -12,13 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Browser-Clients scheiterten am Preflight.** Spec `2026-07-28` routet eine
   Streamable-HTTP-Anfrage ueber `Mcp-Method`, `Mcp-Name` und
   `Mcp-Protocol-Version`; die CORS-Freigabeliste nannte `Mcp-Session-Id`,
-  `Content-Type` und `Authorization` — also den Header genau der
-  Session-Mechanik, die dieselbe Revision abgeschafft hat, und keinen der drei
-  neuen. Ein Browser darf einen nicht safelisteten Header nicht senden, wenn der
-  Server ihn nicht nennt: die Anfrage starb vor dem ersten MCP-Byte, waehrend
-  stdio und Python, fuer die kein Preflight gilt, weiterliefen.
-  `tests/test_cors.py` faehrt jeden Header einzeln gegen die zusammengebaute App
-  und haelt die Liste zusaetzlich gegen die Konstanten aus `mcp.shared.inbound`.
+  `Content-Type` und `Authorization` — also den Session-Header, der fuer sich
+  genommen keine Anfrage routet, und keinen der drei neuen. Ein Browser darf
+  einen nicht safelisteten Header nicht senden, wenn der Server ihn nicht
+  nennt: die Anfrage starb vor dem ersten MCP-Byte, waehrend stdio und Python,
+  fuer die kein Preflight gilt, weiterliefen. `tests/test_cors.py` faehrt jeden
+  Header einzeln gegen die zusammengebaute App und haelt die Liste zusaetzlich
+  gegen die Konstanten aus `mcp.shared.inbound`.
 
 - **Beide READMEs zeigten literale `\uXXXX`-Sequenzen statt Zeichen.** 37
   Zeilen in `README.md`, 36 in `README.de.md`; insgesamt 507 Sequenzen, davon
@@ -208,6 +208,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Beide READMEs beschreiben die Aeren; ein Test haelt jede Sprache einzeln
   dagegen — im Portfolio sind EN und DE desselben Repos schon dreimal
   auseinandergelaufen, weil nur eine Fassung nachgezogen wurde.
+
+- **`Mcp-Session-Id` ist weiterhin freigegeben — und das steht jetzt in einem
+  Test statt in einem Satz.** Der Docstring von `tests/test_cors.py` nannte den
+  Header die Spur einer Mechanik, die `2026-07-28` abgeschafft habe. Das stimmt
+  nicht: `mcp` 2.x bedient beide Protokoll-Aeren, die Session gehoert zur
+  Handshake-Aera, und der Server gibt den Header nicht ohne Grund auch in
+  `expose_headers` frei.
+
+  Nachgemessen statt aus Spec-Text geschlossen: `MCP_SESSION_ID_HEADER` steht
+  unveraendert in `mcp/server/streamable_http.py`, und ein echter `initialize`
+  durch den zusammengebauten ASGI-Stack bekommt eine Session-ID im
+  Antwort-Header zurueck.
+
+  `test_der_session_header_ist_weiterhin_freigegeben` haelt beides fest. Die
+  Gegenprobe zeigt, dass es die Luecke wirklich gab: nimmt man den Header aus
+  der Freigabeliste, faellt genau dieser eine Test, und die sieben bestehenden
+  bleiben gruen.
 
 ## [1.0.3] - 2026-08-02
 
