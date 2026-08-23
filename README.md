@@ -223,7 +223,10 @@ different host. That host answers 401 without authentication — but it answers
 route exists. It is deliberately **not** on the egress allow-list: without
 verifiable access, adding it would be a grant on suspicion.
 
-**MCP protocol version:** `2025-06-18` (surfaced via `epl_server_info`). SDK
+**MCP protocol version:** `2025-11-25` (surfaced via `epl_server_info`) — the
+`initialize` handshake ceiling, derived from the SDK rather than written down
+here a second time. See [MCP Protocol Version](#mcp-protocol-version) for both
+eras. SDK
 updates are proposed monthly via Dependabot; the protocol version is reviewed on
 every `mcp` SDK bump — see the versioning policy in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -242,6 +245,35 @@ every `mcp` SDK bump — see the versioning policy in [`docs/ROADMAP.md`](docs/R
 - **Structured output:** every tool returns both a human-readable Markdown/JSON block (`content`) and a typed `structuredContent` validated against a per-tool output schema, so MCP clients can consume results programmatically without parsing prose.
 - **Terms of service:** Data is subject to the ToS of [sl.bag.admin.ch](https://sl.bag.admin.ch), [bag.admin.ch](https://www.bag.admin.ch), and [fedlex.admin.ch](https://www.fedlex.admin.ch).
 - **No guarantees:** This is a community project, not affiliated with the BAG or any government entity. Availability depends on upstream sources.
+
+---
+
+## MCP Protocol Version
+
+This server speaks **two protocol eras** over the same endpoint. The client's
+first request on a connection decides which one applies; a later claim from the
+other era is refused.
+
+| Era | Revision | Who reaches it |
+|---|---|---|
+| `initialize` handshake | `2024-11-05` … **`2025-11-25`** | What today's clients speak. The server answers with the revision asked for, or with the `2025-11-25` ceiling when the request asks for something newer. |
+| Per-request envelope | **`2026-07-28`** | A request carrying the `2026-07-28` `_meta` envelope opens a modern connection. |
+
+Both revisions are pinned in
+[`tests/test_protocol_version.py`](tests/test_protocol_version.py) and asserted
+against the installed SDK, so a Dependabot bump of `mcp` cannot move either one
+silently. This server builds no ASGI app to send an `initialize` through, so
+the gate asserts the SDK constants rather than a measured response — the
+weaker form, named rather than left unsaid.
+
+Note that the SDK's `LATEST_PROTOCOL_VERSION` is an alias for the **modern**
+era, not for the handshake era — pinning against it alone would leave the era
+that current clients actually negotiate free to drift.
+
+**Update policy.** When the gate fails, do not edit the constant blindly: read
+the spec changelog between the two revisions, verify the server still behaves,
+then move the constant, this section, `README.de.md` and
+[`CHANGELOG.md`](CHANGELOG.md) together.
 
 ---
 

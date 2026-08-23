@@ -41,6 +41,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Rahmen ist mit festen Spaltenbreiten neu gesetzt, in beiden Sprachen
   identisch.
 
+- **`epl_server_info` meldete Aufrufern eine drei Revisionen alte
+  Protokoll-Version.** `PROTOCOL_VERSION` stand auf `2025-06-18`, waehrend der
+  Server seit dem Umstieg auf `mcp` 2.x `2025-11-25` aushandelt — und zwar in
+  genau der Antwort, die ein Client bekommt, wenn er den Server nach sich
+  selbst fragt.
+
+  Gemeldet hat das nichts, obwohl das Feld getestet war: die Zusicherung in
+  `tests/test_unit.py` verglich die Antwort mit `PROTOCOL_VERSION` — also mit
+  der Konstante, aus der der Wert stammt. So eine Pruefung ist mit jedem Wert
+  gruen.
+
+  Die Konstante wird jetzt aus `LATEST_HANDSHAKE_VERSION` abgeleitet statt ein
+  zweites Mal hingeschrieben, und ein neuer Test haelt die ausgelieferte
+  Antwort gegen das SDK statt gegen sich selbst.
+
 
 ### Behoben
 
@@ -176,6 +191,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   XML/XLSX-Behauptung, toter Link zurueck in die Ausgabe, Behauptung statt
   Messung in der SL-Antwort, und der `in`-Vergleich gegen das rohe
   Rueckgabeobjekt. Alle fuenf machen die Suite rot.
+
+- **Protokoll-Gate: beide Spec-Aeren gepinnt und geprueft**
+  (`tests/test_protocol_version.py`). `mcp` 2.x bedient zwei Aeren ueber
+  denselben Server — den `initialize`-Handshake, der bei `2025-11-25`
+  deckelt, und den Pro-Request-Envelope, der `2026-07-28` erreicht.
+  `LATEST_PROTOCOL_VERSION` ist ein Alias auf die **moderne** Aera; wer nur
+  dagegen pinnt, laesst genau die Aera frei wandern, die heutige Clients
+  aushandeln. Beide sind jetzt einzeln gepinnt, ein Dependabot-Bump von
+  `mcp` kann keine davon still verschieben.
+
+  Ohne gemessenen Teil: dieser Server baut keine ASGI-App, durch die sich ein
+  `initialize` schicken liesse. Das Gate haengt deshalb an den SDK-Konstanten —
+  die schwaechere Form, im Docstring benannt statt verschwiegen.
+
+  Beide READMEs beschreiben die Aeren; ein Test haelt jede Sprache einzeln
+  dagegen — im Portfolio sind EN und DE desselben Repos schon dreimal
+  auseinandergelaufen, weil nur eine Fassung nachgezogen wurde.
 
 ## [1.0.3] - 2026-08-02
 
