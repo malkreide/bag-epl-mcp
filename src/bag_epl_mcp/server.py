@@ -168,6 +168,25 @@ mcp = MCPServer(
     cache_hints=CACHE_HINTS,
 )
 
+# Capabilities ehrlich halten: kein `subscriptions/listen`.
+#
+# Ab `2026-07-28` leitet das SDK `resources.subscribe` und alle drei
+# `listChanged`-Flags allein daraus ab, ob `subscriptions/listen` bedient wird —
+# und `MCPServer` registriert den Handler immer. Gemeldet wurde also
+# «abonnierbar, Listen aendern sich», waehrend dieser Server nie ein Ereignis
+# veroeffentlicht: die Listen stehen beim Import fest, die Ressourcen sind
+# Literale. Ein Client, der darauf vertraut, haelt einen Stream offen, auf dem
+# nie etwas ankommt. Die Handshake-Aera meldete schon vorher ueberall `false`;
+# jetzt sagen beide Aeren dasselbe.
+#
+# Das SDK hat dafuer keinen oeffentlichen Schalter, deshalb der Griff in
+# `_request_handlers`. Aendert ein SDK-Bump den Namen, faellt hier nichts um —
+# der Server laeuft weiter wie vorher, und `tests/test_capabilities.py` wird rot.
+# Brechen soll der Build, nicht der Betrieb. Sobald ein Tool eine Liste zur
+# Laufzeit aendert, gehoert diese Zeile im selben Commit weg.
+with suppress(AttributeError):
+    mcp._lowlevel_server._request_handlers.pop("subscriptions/listen", None)
+
 # ─────────────────────────── Konstanten ────────────────────────────────────────
 SL_BASE_URL = "https://sl.bag.admin.ch"
 SL_API_URL = "https://sl.bag.admin.ch/api"
