@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-09-27
+
 ### Behoben
 
 - **Die moderne Aera versprach Abos und Listenaenderungen, die nie kommen.**
@@ -88,8 +90,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zweites Mal hingeschrieben, und ein neuer Test haelt die ausgelieferte
   Antwort gegen das SDK statt gegen sich selbst.
 
-
-### Behoben
 
 - **Der Fedlex-Verweis auf die GgV zeigte auf eine ELI, die es nicht gibt.**
   Ausgegeben wurde `eli/cc/1986/40_40_40`; das Register der Fedlex fuehrt
