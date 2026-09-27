@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behoben
 
+- **`epl_server_info` meldete modernen Clients die falsche Aera.** Das Feld
+  `protocol_version` stand fest auf der Handshake-Obergrenze `2025-11-25`.
+  Der SDK-Client probt per Default aber zuerst `server/discover` und spricht
+  dann `2026-07-28` — gemeldet bekam er eine Revision, die er auf dieser
+  Verbindung gar nicht spricht. Der Test dazu lief mit genau diesem
+  Default-Client und hielt die Falschmeldung fest. Das Tool meldet jetzt die
+  Revision aus dem Request-Kontext; ohne Verbindung (direkter Python-Aufruf)
+  bleibt es bei der Handshake-Obergrenze.
+
+- **`serverInfo.version` war leer.** `MCPServer` bekam kein `version=`, das SDK
+  setzte `""` — in der `initialize`-Antwort ebenso wie im `_meta` von
+  `server/discover`, der ersten Antwort der `2026-07-28`-Aera. Jetzt aus den
+  Paket-Metadaten.
+
+- **Die Protokoll-Pins waren nur Konstanten-Vergleiche.** Begruendet war das
+  mit «dieses Repo baut keine ASGI-App» — `_build_http_app` baut sie.
+  `tests/test_protocol_version.py` schickt jetzt ein `initialize` und
+  `2026-07-28`-Anfragen (ohne Handshake, ohne Session) durch den vollen Stack.
+
 - **Browser-Clients scheiterten am Preflight.** Spec `2026-07-28` routet eine
   Streamable-HTTP-Anfrage ueber `Mcp-Method`, `Mcp-Name` und
   `Mcp-Protocol-Version`; die CORS-Freigabeliste nannte `Mcp-Session-Id`,

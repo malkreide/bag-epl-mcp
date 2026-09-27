@@ -157,7 +157,16 @@ CACHE_HINTS = {
     "server/discover": CacheHint(ttl_ms=LIST_CACHE_TTL_MS, scope="public"),
 }
 
-mcp = MCPServer("bag_epl_mcp", lifespan=_lifespan, cache_hints=CACHE_HINTS)
+# `version` geht in `serverInfo` — beim `initialize`-Handshake ebenso wie im
+# `_meta` von `server/discover`, der ersten Antwort der `2026-07-28`-Aera. Ohne
+# das Argument meldete der Server dort `"version": ""`: der Default des SDK,
+# nicht eine Aussage ueber dieses Paket.
+mcp = MCPServer(
+    "bag_epl_mcp",
+    version=__version__,
+    lifespan=_lifespan,
+    cache_hints=CACHE_HINTS,
+)
 
 # ─────────────────────────── Konstanten ────────────────────────────────────────
 SL_BASE_URL = "https://sl.bag.admin.ch"
@@ -203,7 +212,10 @@ HTTP_TIMEOUT = 30.0
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 100
 
-# ARCH-012: die Revision, die `epl_server_info` an Aufrufer meldet.
+# ARCH-012: die Revision, die `epl_server_info` meldet, wenn es ohne
+# Verbindung aufgerufen wird — direkt aus Python, ohne Client davor. Ueber
+# eine Verbindung meldet das Tool die dort AUSGEHANDELTE Revision, siehe
+# `_protokoll_der_verbindung`.
 #
 # Hier stand `"2025-06-18"` — drei Revisionen alt, und zwar in der Antwort, die
 # ein Client bekommt, wenn er den Server nach sich selbst fragt. Ein Literal an
@@ -218,6 +230,24 @@ MAX_LIMIT = 100
 # `tests/test_protocol_version.py` pinnt beide Aeren, die Ableitung kann also
 # nicht unbemerkt wandern.
 PROTOCOL_VERSION = LATEST_HANDSHAKE_VERSION
+
+
+def _protokoll_der_verbindung(ctx: Context | None) -> str:
+    """Die Revision, die der Aufrufer mit diesem Server tatsaechlich spricht.
+
+    Hier stand fest `PROTOCOL_VERSION`, also die Obergrenze des Handshakes. Ein
+    Client, der `2026-07-28` ausgehandelt hatte — und das tut der SDK-Client
+    per Default, er probt zuerst `server/discover` —, bekam `2025-11-25`
+    gemeldet: eine Revision, die er auf dieser Verbindung gar nicht spricht.
+    Die Wahrheit steht im Request-Kontext; das SDK fuellt ihn in beiden Aeren.
+    """
+    if ctx is not None:
+        with suppress(Exception):
+            if version := ctx.protocol_version:
+                return version
+    return PROTOCOL_VERSION
+
+
 # CH-004: OGD-CH-Standardlizenz fuer die zugrundeliegenden BAG-Open-Data.
 OGD_LICENSE = "CC BY 4.0"
 
@@ -1046,7 +1076,7 @@ async def epl_server_info(ctx: Context | None = None) -> ServerInfoEnvelope:
         # zwar in der Antwort, die ein Client bekommt, wenn er den Server
         # nach sich selbst fragt.
         version=__version__,
-        protocol_version=PROTOCOL_VERSION,
+        protocol_version=_protokoll_der_verbindung(ctx),
         license=OGD_LICENSE,
         # Hier stand \u00abPhase 1 \u2014 XML/XLSX-Downloads + SL-Website-Zugriff\u00bb.
         # Einen XML- oder XLSX-Download gibt es in diesem Server nicht: Im
@@ -1217,8 +1247,9 @@ def _build_http_app(host: str = "127.0.0.1", port: int = 8000):
     """
     Baut die Streamable-HTTP-Starlette-App fuer Cloud-Deployments.
 
-    * Health-Endpoint ``/healthz`` fuer Load-Balancer (SCALE-004) — das
-      ``/mcp``-Endpoint verlangt Session-Header und eignet sich nicht als Probe.
+    * Health-Endpoint ``/healthz`` fuer Load-Balancer (SCALE-004) — ``/mcp``
+      verlangt in beiden Aeren einen gueltigen JSON-RPC-POST (Handshake mit
+      Session-Header bzw. `2026-07-28`-Envelope) und eignet sich nicht als Probe.
     * CORS-Middleware, damit Browser-Clients (claude.ai) den
       ``Mcp-Session-Id``-Header lesen koennen (SDK-004); Origins aus der
       expliziten Allow-List (kein Wildcard).
