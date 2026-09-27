@@ -150,9 +150,10 @@ erfundene Pfade, weshalb daraus **nicht** folgt, dass eine bestimmte Route
 existiert. Er steht bewusst **nicht** auf der Egress-Allow-List: Ohne
 pruefbaren Zugang waere das eine Freigabe auf Verdacht.
 
-**MCP-Protokoll-Version:** `2025-11-25` (via `epl_server_info`) — die
-Obergrenze des `initialize`-Handshakes, aus dem SDK abgeleitet statt hier ein
-zweites Mal hingeschrieben. Beide Aeren stehen unter
+**MCP-Protokoll-Version:** `2026-07-28` nativ, `2025-11-25` als Obergrenze
+des `initialize`-Handshakes. `epl_server_info` meldet die Revision, die die
+aufrufende Verbindung tatsaechlich ausgehandelt hat — aus der Anfrage
+abgeleitet statt hier ein zweites Mal hingeschrieben. Beide Aeren stehen unter
 [MCP-Protokollversion](#mcp-protokollversion). SDK-Updates
 werden monatlich via Dependabot vorgeschlagen.
 
@@ -187,9 +188,10 @@ aus der jeweils anderen Aera wird abgewiesen.
 Beide Revisionen sind in
 [`tests/test_protocol_version.py`](tests/test_protocol_version.py) gepinnt und
 werden gegen das installierte SDK geprueft; ein Dependabot-Bump von `mcp` kann
-also keine der beiden still verschieben. Dieser Server baut keine ASGI-App, durch die sich ein `initialize`
-schicken liesse; das Gate sichert deshalb die SDK-Konstanten statt einer
-gemessenen Antwort — die schwaechere Form, benannt statt verschwiegen.
+also keine der beiden still verschieben. Zusaetzlich zu den Konstanten schickt
+dieselbe Datei ein echtes `initialize` und echte `2026-07-28`-Anfragen
+(`server/discover`, `tools/call`) durch die zusammengebaute HTTP-App und prueft
+die gemessenen Antworten.
 
 Zu beachten: `LATEST_PROTOCOL_VERSION` im SDK ist ein Alias auf die **moderne**
 Aera, nicht auf die Handshake-Aera — wer nur dagegen pinnt, laesst genau die

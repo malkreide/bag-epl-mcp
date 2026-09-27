@@ -223,10 +223,11 @@ different host. That host answers 401 without authentication — but it answers
 route exists. It is deliberately **not** on the egress allow-list: without
 verifiable access, adding it would be a grant on suspicion.
 
-**MCP protocol version:** `2025-11-25` (surfaced via `epl_server_info`) — the
-`initialize` handshake ceiling, derived from the SDK rather than written down
-here a second time. See [MCP Protocol Version](#mcp-protocol-version) for both
-eras. SDK
+**MCP protocol version:** `2026-07-28` natively, `2025-11-25` as the
+`initialize` handshake ceiling. `epl_server_info` reports the revision the
+calling connection actually negotiated — derived from the request, not written
+down here a second time. See [MCP Protocol Version](#mcp-protocol-version) for
+both eras. SDK
 updates are proposed monthly via Dependabot; the protocol version is reviewed on
 every `mcp` SDK bump — see the versioning policy in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -262,9 +263,9 @@ other era is refused.
 Both revisions are pinned in
 [`tests/test_protocol_version.py`](tests/test_protocol_version.py) and asserted
 against the installed SDK, so a Dependabot bump of `mcp` cannot move either one
-silently. This server builds no ASGI app to send an `initialize` through, so
-the gate asserts the SDK constants rather than a measured response — the
-weaker form, named rather than left unsaid.
+silently. On top of the constants, the same file sends a real `initialize` and
+real `2026-07-28` requests (`server/discover`, `tools/call`) through the
+assembled HTTP app and asserts the measured answers.
 
 Note that the SDK's `LATEST_PROTOCOL_VERSION` is an alias for the **modern**
 era, not for the handshake era — pinning against it alone would leave the era

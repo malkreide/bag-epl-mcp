@@ -28,17 +28,19 @@ Nachgemessen statt aus Konstantennamen geschlossen: die Aushandlung steht in
 
 — sie haengt an keinem Transport, gilt also fuer stdio ebenso wie fuer HTTP.
 
-Ohne gemessenen Teil: dieses Repo baut keine ASGI-App, durch die sich ein
-`initialize` schicken liesse. Die Zusicherungen unten haengen deshalb an den
-SDK-Konstanten. Das ist die schwaechere Form, und sie steht hier benannt statt
-unausgesprochen.
+Hier stand, dieses Repo baue keine ASGI-App, durch die sich ein `initialize`
+schicken liesse, weshalb nur SDK-Konstanten geprueft wuerden. Das stimmte nicht:
+`_build_http_app` baut genau diese App. Die Konstanten-Tests bleiben als Pin;
+darunter stehen jetzt gemessene Antworten beider Aeren durch den vollen Stack.
 """
 
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 
+import pytest
 from mcp.types.version import (
     LATEST_HANDSHAKE_VERSION,
     LATEST_MODERN_VERSION,
@@ -124,23 +126,125 @@ def test_beide_readmes_nennen_dieselben_beiden_revisionen() -> None:
             assert value in body, f"{name} nennt {value} nicht im Abschnitt «{anchor}»"
 
 
-async def test_der_server_meldet_aufrufern_die_handshake_obergrenze() -> None:
-    """Was `epl_server_info` an Aufrufer ausliefert — gegen das SDK gehalten.
+@pytest.mark.parametrize(
+    ("mode", "erwartet"),
+    [
+        ("legacy", LATEST_HANDSHAKE_VERSION),
+        ("auto", LATEST_MODERN_VERSION),
+        (LATEST_MODERN_VERSION, LATEST_MODERN_VERSION),
+    ],
+)
+async def test_der_server_meldet_die_ausgehandelte_revision(mode: str, erwartet: str) -> None:
+    """Was `epl_server_info` meldet, gegen das, was die Verbindung ausgehandelt hat.
 
-    `tests/test_unit.py` prueft dasselbe Feld schon, aber gegen
-    `PROTOCOL_VERSION` — also gegen genau die Konstante, aus der der Wert
-    stammt. Eine solche Zusicherung ist mit jedem Wert gruen, und sie war es
-    drei Revisionen lang: gemeldet wurde `2025-06-18`, waehrend der Server
-    laengst `2025-11-25` aushandelte.
-
-    Diese hier vergleicht mit dem SDK. Sie faellt, sobald die Meldung wieder
-    eine eigene Wahrheit wird.
+    Hier stand eine Zusicherung auf `LATEST_HANDSHAKE_VERSION` — gefahren mit
+    dem Default-Client, der seit `mcp` 2.x zuerst `server/discover` probt und
+    `2026-07-28` spricht. Der Test hielt also genau die Falschmeldung fest:
+    ein moderner Client bekam `2025-11-25` gemeldet. `auto` ist der Fall, den
+    Clients ohne Einstellung bekommen, und darum der wichtigste.
     """
     from mcp import Client
 
     from bag_epl_mcp.server import mcp
 
-    async with Client(mcp) as client:
+    async with Client(mcp, mode=mode) as client:
+        assert client.protocol_version == erwartet
         result = await client.call_tool("epl_server_info", {})
 
-    assert result.structured_content["protocol_version"] == LATEST_HANDSHAKE_VERSION
+    assert result.structured_content["protocol_version"] == erwartet
+
+
+# ─────────────── Gemessen: beide Aeren durch die zusammengebaute HTTP-App ───────
+
+ACCEPT = "application/json, text/event-stream"
+
+
+@pytest.fixture
+def http(monkeypatch: pytest.MonkeyPatch):
+    from starlette.testclient import TestClient
+
+    from bag_epl_mcp.server import _build_http_app, settings
+
+    monkeypatch.setattr(settings, "allowed_hosts", [])
+    with TestClient(_build_http_app("127.0.0.1", 8000), base_url="http://127.0.0.1:8000") as c:
+        yield c
+
+
+def _modern(http, method: str, params: dict, name: str | None = None) -> dict:
+    """Eine `2026-07-28`-Anfrage: kein Handshake, das Envelope in `_meta`."""
+    headers = {
+        "Accept": ACCEPT,
+        "Mcp-Protocol-Version": LATEST_MODERN_VERSION,
+        "Mcp-Method": method,
+    }
+    if name is not None:
+        headers["Mcp-Name"] = name
+    meta = {
+        "io.modelcontextprotocol/protocolVersion": LATEST_MODERN_VERSION,
+        "io.modelcontextprotocol/clientInfo": {"name": "gate", "version": "0"},
+        "io.modelcontextprotocol/clientCapabilities": {},
+    }
+    body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": {**params, "_meta": meta}}
+    response = http.post("/mcp", headers=headers, json=body)
+    assert response.status_code == 200, response.text
+    assert "mcp-session-id" not in response.headers, "die moderne Aera kennt keine Session"
+    return response.json()["result"]
+
+
+def _initialize(http, requested: str) -> dict:
+    body = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": requested,
+            "capabilities": {},
+            "clientInfo": {"name": "gate", "version": "0"},
+        },
+    }
+    response = http.post("/mcp", headers={"Accept": ACCEPT}, json=body)
+    assert response.status_code == 200, response.text
+    text = response.text
+    if response.headers["content-type"].startswith("text/event-stream"):
+        text = next(line[5:] for line in text.splitlines() if line.startswith("data:"))
+    return json.loads(text)["result"]
+
+
+def test_http_discover_bietet_die_moderne_revision_an(http) -> None:
+    from bag_epl_mcp import __version__
+
+    result = _modern(http, "server/discover", {})
+
+    assert LATEST_MODERN_VERSION in result["supportedVersions"]
+    server_info = result["_meta"]["io.modelcontextprotocol/serverInfo"]
+    assert server_info == {"name": "bag_epl_mcp", "version": __version__}, (
+        "ohne `version=` am Konstruktor meldet das SDK hier einen Leerstring"
+    )
+
+
+def test_http_modern_tool_call_meldet_die_moderne_revision(http) -> None:
+    result = _modern(
+        http, "tools/call", {"name": "epl_server_info", "arguments": {}}, name="epl_server_info"
+    )
+
+    assert result["structuredContent"]["protocol_version"] == LATEST_MODERN_VERSION
+
+
+@pytest.mark.parametrize(
+    ("angefragt", "ausgehandelt"),
+    [
+        (LATEST_HANDSHAKE_VERSION, LATEST_HANDSHAKE_VERSION),
+        # Wer ueber den Handshake die moderne Revision verlangt, bekommt die
+        # Obergrenze — die moderne Aera erreicht man nur ueber das Envelope.
+        (LATEST_MODERN_VERSION, LATEST_HANDSHAKE_VERSION),
+    ],
+)
+def test_http_initialize_handelt_die_handshake_aera_aus(
+    http, angefragt: str, ausgehandelt: str
+) -> None:
+    from bag_epl_mcp import __version__
+
+    result = _initialize(http, angefragt)
+
+    assert result["protocolVersion"] == ausgehandelt
+    assert result["serverInfo"]["version"] == __version__
