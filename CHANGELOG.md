@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Behoben
 
+- **Die moderne Aera versprach Abos und Listenaenderungen, die nie kommen.**
+  Unter `2026-07-28` meldete der Server `resources.subscribe: true` und
+  `listChanged: true` fuer Werkzeuge, Ressourcen und Prompts. Das SDK leitet
+  alle vier dort allein daraus ab, ob `subscriptions/listen` bedient wird,
+  und `MCPServer` registriert diesen Handler immer. Veroeffentlicht hat der
+  Server nie ein Ereignis: Die Listen stehen beim Import fest, die Ressourcen
+  sind Literale. Ein Client, der dem glaubte, hielt einen SSE-Stream offen,
+  auf dem nie etwas ankam. Der Handler ist jetzt entfernt, `subscriptions/listen`
+  antwortet mit HTTP 404 / `-32601`, und beide Aeren melden ueberall `false` —
+  die Handshake-Aera tat das schon vorher. `tests/test_capabilities.py` prueft
+  beide Aeren, die Absage am Draht und mit einer Negativkontrolle, dass das
+  SDK ohne den Eingriff weiterhin `true` meldet.
+
 - **`epl_server_info` meldete modernen Clients die falsche Aera.** Das Feld
   `protocol_version` stand fest auf der Handshake-Obergrenze `2025-11-25`.
   Der SDK-Client probt per Default aber zuerst `server/discover` und spricht
